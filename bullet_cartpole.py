@@ -190,40 +190,40 @@ class BulletCartpole(gym.Env):
         else:
             fx, fy = action[0] * self.action_force
 
-        # monkey_pole_positions = np.zeros(
-        #     shape=[self.repeats, self.steps_per_repeat, 3])
-        # monkey_pole_angles = np.zeros(
-        #     shape=[self.repeats, self.steps_per_repeat, 3])
-
-        monkey_pole_velocities = np.zeros(
-            shape=[self.repeats, self.steps_per_repeat, 2, 3]
-        )
+        pole_positions = np.zeros(
+            shape=[self.repeats, self.steps_per_repeat, 2, 3])
+        pole_velocities = np.zeros(
+            shape=[self.repeats, self.steps_per_repeat, 2, 3])
 
         # step simulation forward. at the end of each repeat we set part of the
         # step's state by capture the cart & pole state in some form.
         for r in range(self.repeats):
             for s in range(self.steps_per_repeat):
                 p.stepSimulation()
-                p.applyExternalForce(self.cart, -1, (fx, fy, 0), (0, 0, 0),
-                                     p.WORLD_FRAME)
+                p.applyExternalForce(
+                    self.cart, -1, (fx, fy, 0), (0, 0, 0), p.WORLD_FRAME)
                 if self.delay > 0:
                     time.sleep(self.delay)
-                # Save stuff for velocity estimation.
-                # (x, y, z), ori = p.getBasePositionAndOrientation(self.pole)
-                # rol, pit, yaw = p.getEulerFromQuaternion(ori)
-                # monkey_pole_positions[r][s][0] = x
-                # monkey_pole_positions[r][s][1] = y
-                # monkey_pole_positions[r][s][2] = z
-                # monkey_pole_angles[r][s][0] = rol
-                # monkey_pole_angles[r][s][1] = pit
-                # monkey_pole_angles[r][s][2] = yaw
+
+                # [bbeckman] capture 8-state (x, xdot, y, ydot, rol, rol.dot,
+                # pit, pit.dot) for LQR. Actually capture 12-state, then cut
+                # it down outside this loop.
+                pos = p.getBasePositionAndOrientation(self.pole)
+                rpy = p.getEulerFromQuaternion(pos[1])
+                vel = p.getBaseVelocity(self.pole)
+                for j in range(3):
+                    pole_positions[r][s][0][j] = pos[0][j]
+                    pole_positions[r][s][1][j] = rpy[j]
+                    pole_velocities[r][s][0][j] = vel[0][j]
+                    pole_velocities[r][s][1][j] = vel[1][j]
+                pass
+
+            # Monkey-patch the physical 12-state.
+            self.monkey_positions = np.copy(pole_positions)
+            self.monkey_velocities = np.copy(pole_velocities)
 
             # Save 3-pos and 4-quat for this repeat.
             self.set_state_element_for_repeat(r)
-            vel = p.getBaseVelocity(self.pole)
-            for j in range(3):
-                monkey_pole_velocities[r][s][0][j] = vel[0][j]
-                monkey_pole_velocities[r][s][1][j] = vel[1][j]
         self.steps += 1
         # self.monkey_pole_positions = monkey_pole_positions
         # self.monkey_pole_angles = monkey_pole_angles
