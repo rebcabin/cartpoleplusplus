@@ -146,9 +146,15 @@ class BulletCartpole(gym.Env):
         p.connect(p.GUI if self.gui else p.DIRECT)
         # temp = p.getDebugVisualizerCamera()
         p.setGravity(0, 0, -9.81)
+
         p.loadURDF("models/ground.urdf", 0, 0, 0, 0, 0, 0, 1)
         self.cart = p.loadURDF("models/cart.urdf", 0, 0, 0.08, 0, 0, 0, 1)
         self.pole = p.loadURDF("models/pole.urdf", 0, 0, 0.35, 0, 0, 0, 1)
+
+        # [bbeckman] add second cart-pole
+        self.cart2 = p.loadURDF("models/cart2.urdf", 1, 0, 0.08, 0, 0, 0, 1)
+        self.pole2 = p.loadURDF("models/pole2.urdf", 1, 0, 0.35, 0, 0, 0, 1)
+
         # [bbeckman] Good camera params found by trial-and-error bisection.
         p.resetDebugVisualizerCamera(cameraYaw=15,
                                      cameraTargetPosition=(0, 0, 0),
@@ -194,14 +200,13 @@ class BulletCartpole(gym.Env):
             shape=[self.repeats, self.steps_per_repeat, 2, 3])
         pole_velocities = np.zeros(
             shape=[self.repeats, self.steps_per_repeat, 2, 3])
-
         # step simulation forward. at the end of each repeat we set part of the
         # step's state by capture the cart & pole state in some form.
         for r in range(self.repeats):
             for s in range(self.steps_per_repeat):
                 p.stepSimulation()
-                p.applyExternalForce(
-                    self.cart, -1, (fx, fy, 0), (0, 0, 0), p.WORLD_FRAME)
+                # p.applyExternalForce(
+                #     self.cart, -1, (fx, fy, 0), (0, 0, 0), p.WORLD_FRAME)
                 if self.delay > 0:
                     time.sleep(self.delay)
 
