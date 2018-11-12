@@ -35,10 +35,11 @@ else:
 
 opts.repeats = 1
 opts.gui = True
+opts.delay = 0.0125
+opts.action_force = 1.0
 discrete_actions = False
 env = bullet_cartpole.BulletCartpole(
     opts=opts, discrete_actions=discrete_actions)
-env.delay = 0.0125
 # [bbeckman] These aren't exact, just shots in the dark, but not completely
 # nuts.
 EXACT_LQR_CART_POLE_GAINS_X = [-2.82843,  # x
@@ -74,7 +75,7 @@ for _ in range(opts.num_eval):
         x_action = np.dot(residual, EXACT_LQR_CART_POLE_GAINS_X)
         y_action = np.dot(residual, EXACT_LQR_CART_POLE_GAINS_Y)
 
-        action = np.array([[x_action, y_action]]) / 50.0
+        action = np.array([[x_action, y_action]])
 
         action = np.array([[0, 0]])
 
