@@ -8,6 +8,7 @@ import pybullet as p
 import sys
 import time
 
+
 np.set_printoptions(precision=3, suppress=True, linewidth=10000)
 
 
@@ -16,12 +17,12 @@ def add_opts(parser):
     parser.add_argument('--delay', type=float, default=0.0)
     parser.add_argument('--action-force', type=float, default=50.0,
                         help="magnitude of action force applied per step")
-    parser.add_argument('--initial-force', type=float, default=55.0,
+    parser.add_argument('--initial-force', type=float, default=200.0,
                         help="magnitude of initial push, in random direction")
     parser.add_argument('--no-random-theta', action='store_true')
     parser.add_argument('--action-repeats', type=int, default=2,
                         help="number of action repeats")
-    parser.add_argument('--steps-per-repeat', type=int, default=5,
+    parser.add_argument('--steps-per-repeat', type=int, default=1,
                         help="number of sim steps per repeat")
     parser.add_argument('--num-cameras', type=int, default=1,
                         help="how many camera points to render; 1 or 2")
@@ -74,7 +75,7 @@ class BulletCartpole(gym.Env):
         # (see initial_force)
         self.initial_force_steps = 30
 
-        # whether we do initial push in a random direction
+        # whether to do initial push in a random direction
         # if false, always push  along x-axis (simple problem, useful for
         # debugging)
         self.random_theta = not opts.no_random_theta
@@ -95,8 +96,8 @@ class BulletCartpole(gym.Env):
         # open event log
         if opts.event_log_out:
             import event_log
-            self.event_log = event_log.EventLog(opts.event_log_out,
-                                                opts.use_raw_pixels)
+            self.event_log = event_log.EventLog(
+                opts.event_log_out, opts.use_raw_pixels)
         else:
             self.event_log = None
 
@@ -132,6 +133,8 @@ class BulletCartpole(gym.Env):
             #  R = number of repeats
             #  2 = two items; cart & pole
             #  7d tuple for pos + orientation pose
+            # [bbeckman: not for LQR, where we use physical eight-space:
+            #  (x, x_dot, y, y_dot, rol, rol_dot, pit, pit_dot)]
             state_shape = (self.repeats, 2, 7)
         float_max = np.finfo(np.float32).max
         self.observation_space = gym.spaces.Box(
@@ -146,7 +149,6 @@ class BulletCartpole(gym.Env):
 
         # setup bullet
         p.connect(p.GUI if self.gui else p.DIRECT)
-        # temp = p.getDebugVisualizerCamera()
         p.setGravity(0, 0, -9.81)
 
         p.loadURDF("models/ground.urdf", 0, 0, 0, 0, 0, 0, 1)
@@ -173,7 +175,7 @@ class BulletCartpole(gym.Env):
     def render(self, mode, close):
         pass
 
-    def step(self, action):
+    def step(self, action: np.ndarray):
         if self.done:
             print("calling step after done????", file=sys.stderr)
             return np.copy(self.state), 0, True, {}
@@ -181,37 +183,30 @@ class BulletCartpole(gym.Env):
         info = {}
 
         # based on action decide the x and y forces
-        fx = fy = 0
-        if self.discrete_actions:
-            if action == 0:
-                pass
-            elif action == 1:
-                fx = self.action_force
-            elif action == 2:
-                fx = -self.action_force
-            elif action == 3:
-                fy = self.action_force
-            elif action == 4:
-                fy = -self.action_force
-            else:
-                raise Exception("unknown discrete action [%s]" % action)
-        else:
-            fx, fy = action[0] * self.action_force
 
         pole_positions = np.zeros(
-            shape=[self.repeats, self.steps_per_repeat, 2, 3])
+            # two poles, reps, steps, xyz, rpy, 3 each
+            shape=[2, self.repeats, self.steps_per_repeat, 2, 3])
         pole_velocities = np.zeros(
-            shape=[self.repeats, self.steps_per_repeat, 2, 3])
+            shape=[2, self.repeats, self.steps_per_repeat, 2, 3])
 
         # step simulation forward. at the end of each repeat we set part of the
         # step's state by capture the cart & pole state in some form.
 
-        for r in range(self.repeats):
-            for s in range(self.steps_per_repeat):
+        # TODO: [bbeckman: apply disturbance and regulation forces each step.]
+        for r in range(self.repeats):  # [bbeckman] Now just one
+            for s in range(self.steps_per_repeat):  # [bbeckman] now just one
                 p.stepSimulation()
-                # p.applyExternalForce(
-                #     self.cart, -1, (fx, fy, 0), (0, 0, 0), p.WORLD_FRAME)
-                if self.delay > 0:
+
+                fx, fy = action[0] * self.action_force
+                p.applyExternalForce(
+                    self.cart, -1, (fx, fy, 0), (0, 0, 0), p.LINK_FRAME)
+
+                fx2, fy2 = action[1] * self.action_force
+                p.applyExternalForce(
+                    self.cart2, -1, (fx2, fy2, 0), (0, 0, 0), p.LINK_FRAME)
+
+                if self.delay > 0:  # for graphics
                     time.sleep(self.delay)
 
                 # [bbeckman] 12-state; cut it down to 8 outside this loop.
@@ -219,33 +214,43 @@ class BulletCartpole(gym.Env):
                 rpy = p.getEulerFromQuaternion(pso[1])
                 vel = p.getBaseVelocity(self.pole)
                 for j in range(3):
-                    pole_positions[r][s][0][j] = pso[0][j]
-                    pole_positions[r][s][1][j] = rpy[j]
-                    pole_velocities[r][s][0][j] = vel[0][j]
-                    pole_velocities[r][s][1][j] = vel[1][j]
+                    pole_positions[0][r][s][0][j] = pso[0][j]
+                    pole_positions[0][r][s][1][j] = rpy[j]
+                    pole_velocities[0][r][s][0][j] = vel[0][j]
+                    pole_velocities[0][r][s][1][j] = vel[1][j]
+
+                pso = p.getBasePositionAndOrientation(self.pole2)
+                rpy = p.getEulerFromQuaternion(pso[1])
+                vel = p.getBaseVelocity(self.pole)
+                for j in range(3):
+                    pole_positions[1][r][s][0][j] = pso[0][j]
+                    pole_positions[1][r][s][1][j] = rpy[j]
+                    pole_velocities[1][r][s][0][j] = vel[0][j]
+                    pole_velocities[1][r][s][1][j] = vel[1][j]
                 pass
 
             # Monkey-patch the physical 12-state.
             self.monkey_positions = np.copy(pole_positions)
             self.monkey_velocities = np.copy(pole_velocities)
 
+            # TODO: [bbeckman, make this just the physical state].
             self.set_state_element_for_repeat(r)
 
         self.steps += 1
 
         # Check for out of bounds by position or orientation on pole.
         # we (re)fetch pose explicitly rather than depending on fields in state.
-        (x, y, _z), orient = p.getBasePositionAndOrientation(self.pole)
-        ox, oy, _oz = p.getEulerFromQuaternion(orient)  # roll / pitch / yaw
-        if abs(x) > self.pos_threshold or abs(y) > self.pos_threshold:
-            info['done_reason'] = 'out of position bounds'
-            self.done = True
-            reward = 0.0
-        elif abs(ox) > self.angle_threshold or abs(oy) > self.angle_threshold:
-            # TODO: probably better to do explicit angle from z?
-            info['done_reason'] = 'out of orientation bounds'
-            self.done = True
-            reward = 0.0
+        # (x, y, _z), orient = p.getBasePositionAndOrientation(self.pole)
+        # ox, oy, _oz = p.getEulerFromQuaternion(orient)  # roll / pitch / yaw
+        # if abs(x) > self.pos_threshold or abs(y) > self.pos_threshold:
+        #     info['done_reason'] = 'out of position bounds'
+        #     self.done = True
+        #     reward = 0.0
+        # elif abs(ox) > self.angle_threshold or abs(oy) > self.angle_threshold:
+        #     # TODO: probably better to do explicit angle from z?
+        #     info['done_reason'] = 'out of orientation bounds'
+        #     self.done = True
+        #     reward = 0.0
         # check for end of episode (by length)
         if self.steps >= self.max_episode_len:
             info['done_reason'] = 'episode length'
@@ -253,13 +258,13 @@ class BulletCartpole(gym.Env):
 
         # calc reward, fixed base of 1.0
         reward = 1.0
-        if self.reward_calc == "angle" or self.reward_calc == "angle_action":
-            # clip to zero since angles can be past threshold
-            reward += max(0, 2 * self.angle_threshold - np.abs(ox) - np.abs(oy))
-        if self.reward_calc == "action" or self.reward_calc == "angle_action":
-            # max norm will be sqr(2) ~= 1.4.
-            # reward is already 1.0 to add another 0.5 as o0.1 buffer from zero
-            reward += 0.5 - np.linalg.norm(action[0])
+        # if self.reward_calc == "angle" or self.reward_calc == "angle_action":
+        #     # clip to zero since angles can be past threshold
+        #     reward += max(0, 2 * self.angle_threshold - np.abs(ox) - np.abs(oy))
+        # if self.reward_calc == "action" or self.reward_calc == "angle_action":
+        #     # max norm will be sqr(2) ~= 1.4.
+        #     # reward is already 1.0 to add another 0.5 as o0.1 buffer from zero
+        #     reward += 0.5 - np.linalg.norm(action[0])
 
         # log this event.
         # TODO in the --use-raw-pixels case would be nice to have poses
@@ -317,6 +322,7 @@ class BulletCartpole(gym.Env):
         p.resetBasePositionAndOrientation(self.cart2, (1, 0, 0.08), (0, 0, 0, 1))
         p.resetBasePositionAndOrientation(self.pole2, (1, 0, 0.35), (0, 0, 0, 1))
 
+        # [bbeckman: Let initial conditions stabilize?]
         for _ in range(100):
             p.stepSimulation()
 
@@ -342,11 +348,11 @@ class BulletCartpole(gym.Env):
     def bump_cart(self, a_cart):
         p.applyExternalForce(
             a_cart, -1,  # LINK_INDEX
-            self.random_force_in_plane(), (0, 0, 0), p.LINK_FRAME)  # .WORLD_FRAME)
+            self.random_force_in_plane(), (0, 0, 0), p.LINK_FRAME)
+        # .WORLD_FRAME)
 
     def random_force_in_plane(self):
         theta = (np.random.random() * 2 * np.pi) if self.random_theta else 0.0
-        self.initial_force = 200
         fx, fy = \
             self.initial_force * np.cos(theta), \
             self.initial_force * np.sin(theta)

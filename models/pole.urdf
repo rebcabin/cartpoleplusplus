@@ -9,7 +9,7 @@
       <contact_erp value="1.0"/>
     </contact>
     <inertial>
-      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <origin rpy="0 0 0" xyz="-0.5 0 0"/>
       <mass value="5"/>
  <!--     <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>-->
       <inertia ixx="0.104333333333" ixy="0" ixz="0"
@@ -17,7 +17,7 @@
                izz="0.000333333333"/>
     </inertial>
     <visual>
-      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+      <origin rpy="0 0 0" xyz="-0.5 0 0"/>
       <geometry>
         <box size="0.02 0.02 0.5"/>
       </geometry>
@@ -26,7 +26,7 @@
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
+      <origin rpy="0 0 0" xyz="-.5 0 0"/>
       <geometry>
         <box size="0.02 0.02 0.5"/>
       </geometry>
