@@ -264,6 +264,8 @@ class GameState(object):
         self.dpy_font = None
         self.data_font = None
 
+        self.pygame_inited = False
+
     def __del__(self):
         pygame.quit()
 
@@ -479,17 +481,19 @@ class GameState(object):
         self.screen.blit(self.text_surface, self.text_rect)
 
     def keyboard_command_window(self):
-        pygame.init()
-        # modes = pygame.display.list_modes()
-        self.screen = pygame.display.set_mode(self.cmdwin)  # as tuple
-        pygame.display.set_caption('Keyboard Commands')
-        pygame.mouse.set_visible(False)
-        self.dpy_font = pygame.font.SysFont(None, 48)
-        self.data_font = pygame.font.SysFont('Consolas', 12)
-        self.text_surface = pygame.Surface(self.cmdwin)
-        self.text_surface.fill(THECOLORS['black'])
-        self.text_rect = pygame.Rect(
-            0, 0, self.cmdwin.width, self.cmdwin.height)
+        if not self.pygame_inited:
+            pygame.init()
+            # modes = pygame.display.list_modes()
+            self.screen = pygame.display.set_mode(self.cmdwin)  # as tuple
+            pygame.display.set_caption('Keyboard Commands')
+            pygame.mouse.set_visible(False)
+            self.dpy_font = pygame.font.SysFont(None, 48)
+            self.data_font = pygame.font.SysFont('Consolas', 12)
+            self.text_surface = pygame.Surface(self.cmdwin)
+            self.text_surface.fill(THECOLORS['black'])
+            self.text_rect = pygame.Rect(
+                0, 0, self.cmdwin.width, self.cmdwin.height)
+            self.pygame_inited = True
 
         self.render_text()
         pygame.display.flip()
@@ -503,7 +507,6 @@ class GameState(object):
                     done = True
                     result = event.key
 
-        pygame.quit()
         return result
 
     def command_blast(self, key, fg_color='green', bg_color='blue'):
@@ -716,5 +719,5 @@ while True:
         game.process_command_search_mode(c)
         game.record_output(c)
 
-quit()
+pygame.quit()
 
