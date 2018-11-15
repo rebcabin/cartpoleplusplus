@@ -1,8 +1,5 @@
-#!/usr/bin/env python
-
 # Game-specific
 
-import argparse  # TODO deprecate
 import pybullet as p
 
 # General-purpose
@@ -12,7 +9,7 @@ import numpy.random as rnd
 import datetime
 import time
 from functools import partial
-from toolz import accumulate
+from toolz import reduce
 from pprint import PrettyPrinter
 from collections import namedtuple as ntup
 import os
@@ -41,7 +38,7 @@ class BulletCartpole(object):
     PITCH_DOT = 7
 
     def __init__(self, bullet_cart_id, bullet_pole_id,
-                 position_threshold=3.0, angle_threshold=0.35):
+                 position_threshold, angle_threshold):
 
         self.cart = bullet_cart_id
         self.pole = bullet_pole_id
@@ -59,17 +56,12 @@ class BulletCartpole(object):
         self.vel = None
 
     def step(self, action: np.ndarray):
-
         _info = {}
-
         p.stepSimulation()
-
         fx, fy = action
         p.applyExternalForce(
             self.cart, -1, (fx, fy, 0), (0, 0, 0), p.LINK_FRAME)
-
         self._observe_state()
-
         _done = False
         if abs(self.state[self.X]) > self.position_threshold \
                 or abs(self.state[self.Y]) > self.position_threshold:
@@ -79,13 +71,12 @@ class BulletCartpole(object):
                 or abs(self.state[self.PITCH]) > self.angle_threshold:
             _info['done_reason'] = 'orientation bounds exceeded'
             _done = True
-
         _reward = 0.0
         return np.copy(self.state), _reward, _done, _info
 
     def _observe_state(self):
         self.pso = p.getBasePositionAndOrientation(self.pole)
-        self.rpy = p.getEulerFromQuaternion(pso[1])
+        self.rpy = p.getEulerFromQuaternion(self.pso[1])
         self.vel = p.getBaseVelocity(self.pole)
         self.state[self.X] = self.pso[0][0]
         self.state[self.Y] = self.pso[0][1]
@@ -238,11 +229,11 @@ def sum_of_evaluated_funcs(funcs, state, t):
     return result
 
 
-def repeatable_disturbance(state, t):  # has form of a 'u' function
+def repeatable_disturbance(_state, t):  # has form of a 'u' function
     """For comparison with "particularBumpy" in Mathematica."""
 
     #      5.55208 E ^ (-10(-15 + t) ^ 2)
-    r15 = 5.55208 * np.exp(-10. * ((t - 15.) ** 2))
+    r15 =  5.55208 * np.exp(-10. * ((t - 15.) ** 2))
 
     #    - 4.92702 E ^ (-10(-13 + t) ^ 2)
     r13 = -4.92702 * np.exp(-10. * ((t - 13.) ** 2))
@@ -254,16 +245,16 @@ def repeatable_disturbance(state, t):  # has form of a 'u' function
     r10 = -4.05894 * np.exp(-10. * ((t - 10.) ** 2))
 
     #    + 1.01364 E ^ (-10(-8 + t) ^ 2)
-    r08 = 1.01364 * np.exp(-10. * ((t - 8.) ** 2))
+    r08 =  1.01364 * np.exp(-10. * ((t - 8.) ** 2))
 
     #    - 3.42841 E ^ (-10(-7 + t) ^ 2)
     r07 = -3.42841 * np.exp(-10. * ((t - 7.) ** 2))
 
     #    + 4.31046 E ^ (-10(-6 + t) ^ 2)
-    r06 = 4.31046 * np.exp(-10. * ((t - 6.) ** 2))
+    r06 =  4.31046 * np.exp(-10. * ((t - 6.) ** 2))
 
     #    + 3.33288 E ^ (-10(-4 + t) ^ 2)
-    r04 = 3.33288 * np.exp(-10. * ((t - 4.) ** 2))
+    r04 =  3.33288 * np.exp(-10. * ((t - 4.) ** 2))
 
     #    - 5.64323 E ^ (-10(-3 + t) ^ 2)
     r03 = -5.64323 * np.exp(-10. * ((t - 3.) ** 2))
@@ -272,7 +263,7 @@ def repeatable_disturbance(state, t):  # has form of a 'u' function
     r02 = -7.98570 * np.exp(-10. * ((t - 2.) ** 2))
 
     #    + 1.80146 E ^ (-10 t ^ 2)
-    r00 = 1.80146 * np.exp(-10. * ((t - 0.) ** 2))
+    r00 =  1.80146 * np.exp(-10. * ((t - 0.) ** 2))
 
     return r15 + r13 + r12 + r10 + r08 + r07 + r06 + r04 + r03 + r02 + r00
 
@@ -299,7 +290,8 @@ def lqr_control_force(gains, zero_point, state, t_ignore):
 sim_constants_ntup = ntup(
     'SimConstants',
     ['seed', 'dimensions', 'duration_second', 'steps_per_second',
-     'initial_condition', 'lqr_zero_point'])
+     'initial_condition', 'lqr_zero_point', 'delta_time',
+     'position_threshold', 'angle_threshold'])
 
 search_constants_ntup = ntup(
     'SearchConstants',
@@ -307,19 +299,26 @@ search_constants_ntup = ntup(
 
 
 class GameState(object):
-    def __init__(self, pair,
-                 output_file_name=None,
-                 seed=8420, dimensions=8,
-                 duration_second=30, steps_per_second=100,
-                 initial_condition=
-                 np.array([0, 0, 0, 0, pi2 + 0.1, 0, pi2 + 0.1, 0]),
-                 lqr_zero_point=np.array([0, 0, 0, 0, pi2, 0, pi2, 0]),
-                 search_covariance_decay=0.975,
-                 search_radius=20):
+
+    def __init__(
+            self, pair,
+            output_file_name=None,
+            seed=8420,
+            dimensions=8,
+            duration_second=30,
+            steps_per_second=60,
+            initial_condition=
+            np.array([0, 0, 0, 0, pi2 + 0.1, 0, pi2 + 0.1, 0]),
+            lqr_zero_point=np.array([0, 0, 0, 0, pi2, 0, pi2, 0]),
+            delta_time=1.0 / 60.0,  # TODO: pybullet default time ?
+            action_force=5.0,
+            position_threshold=3.0,
+            angle_threshold=0.35,  # radian ~~ 20 deg
+            search_covariance_decay=0.975,
+            search_radius=20):
         self.pair = pair
         self.output_file_name = output_file_name
 
-        self.states = None
         self.cov0 = (search_radius ** 2) * np.identity(dimensions)
         self.cov = np.copy(self.cov0)
         self.y0 = np.zeros(dimensions)
@@ -331,20 +330,7 @@ class GameState(object):
         self.ground_truth_mode = False
         self.trial_count = 0
 
-        self.max_episode_len = 200
-
-        # threshold for pole position.
-        # if absolute x or y moves outside this we finish episode
-        self.pos_threshold = 3.0  # TODO: higher?
-
-        # threshold for angle from z-axis.
-        # if x or y > this value we finish episode.
-        self.angle_threshold = 0.35  # radians; ~= 20deg
-
-        # force to apply per action simulation step.
-        # in the discrete case this is the fixed force applied
-        # in the continuous case each x/y is in range (-F, F)
-        self.action_force = 50.0
+        self.action_force = action_force
 
         pygame.init()
         self.data_font = pygame.font.SysFont('Consolas', 12)
@@ -355,7 +341,11 @@ class GameState(object):
             duration_second=duration_second,
             steps_per_second=steps_per_second,
             initial_condition=initial_condition,
-            lqr_zero_point=lqr_zero_point)
+            lqr_zero_point=lqr_zero_point,
+            delta_time=delta_time,
+            position_threshold=position_threshold,
+            angle_threshold=angle_threshold
+        )
 
         # If the seed is zero, it's falsey, and "None" will be passed in,
         # causing non-repeatable pseudo-randoms.
@@ -407,39 +397,6 @@ class GameState(object):
 
     def process_command_ground_truth_mode(self, c):
         self.manipulate_disturbances(c)
-
-    def free_cart_pole_lqr(self, i):
-        h = 1. / self.sim_constants.steps_per_second
-
-        if self.repeatable_q:
-            u = partial(
-                sum_of_evaluated_funcs,
-                [lambda s, t: repeatable_disturbance(
-                    s, t) * self.amplitude / 60,
-                 partial(
-                     lqr_control_force, self.ys[i],
-                     self.sim_constants.lqr_zero_point)])
-        else:
-            u = partial(
-                sum_of_evaluated_funcs,
-                [very_noisy_disturbance(self.amplitude),
-                 partial(
-                     lqr_control_force, self.ys[i],
-                     self.sim_constants.lqr_zero_point)])
-
-        n_steps = int(self.sim_constants.duration_second // h)
-        time_0 = 0
-        solution = list(accumulate(
-            partial(step_rk4, partial(self.pair.cart_poles[i].dx_u, u)),
-            [(h, h * j) for j in np.arange(n_steps)],
-            (time_0, self.sim_constants.initial_condition)
-        ))
-
-        return solution
-
-    def solve_pair_motion(self):
-        result = [self.free_cart_pole_lqr(i) for i in range(2)]
-        return result
 
     def tighten(self):
         self.cov *= self.search_constants.decay
@@ -568,6 +525,46 @@ class GameState(object):
 
         self.pair.screen.blit(self.pair.text_surface, self.pair.text_rect)
 
+    def keyboard_command_window(self):
+        pygame.init()
+        # modes = pygame.display.list_modes()
+        screen = pygame.display.set_mode((800, 600))
+        pygame.display.set_caption('Keyboard Commands')
+        pygame.mouse.set_visible(False)
+        bfont = pygame.font.SysFont(None, 48)
+        cfont = pygame.font.SysFont('Consolas', 12)
+
+        self.text_to_screen_center(
+            bfont, 'Starting Keyboard Test', None, screen, 'white', 'black')
+
+        done = False
+        while not done:
+            for event in pygame.event.get():
+                if event.type == KEYUP:
+                    self.text_to_screen_center(
+                        bfont, 'KEYUP:', event, screen, 'yellow', 'red')
+                    print('KEYUP ' + str(event))
+                    if event.key == pygame.K_q:
+                        done = True
+                elif event.type == KEYDOWN:
+                    self.text_to_screen_center(
+                        bfont, 'KEYDOWN:', event, screen, 'blue', 'green')
+                    print('KEYDOWN ' + str(event))
+        pygame.quit()
+
+    def text_to_screen_center(self, bfont, text, event, screen, fgcolor, bgcolor):
+        screen.fill(THECOLORS[bgcolor])
+        if event is not None:
+            text += ' [ ' + chr(event.key) + ' ] [' + str(event.key) + ']'
+        btext = bfont.render(text, True, THECOLORS[fgcolor], THECOLORS[bgcolor])
+        brect = btext.get_rect()
+        brect.centerx = screen.get_rect().centerx
+        brect.centery = screen.get_rect().centery
+        arect = screen.blit(btext, brect)
+        pygame.display.update()
+
+
+
 
 def game_factory() -> GameState:
 
@@ -588,11 +585,16 @@ def game_factory() -> GameState:
                                  cameraPitch=-24,
                                  cameraDistance=1.5)
 
-    pair = [BulletCartpole(cart1, pole1), BulletCartpole(cart2, pole2)]
+    position_threshold = 3.0
+    angle_threshold = 0.35
+    pair = [BulletCartpole(cart1, pole1, position_threshold, angle_threshold),
+            BulletCartpole(cart2, pole2, position_threshold, angle_threshold)]
 
     result = GameState(
         seed=0,
         pair=pair,
+        position_threshold=position_threshold,
+        angle_threshold=angle_threshold,
         output_file_name=create_place_to_record_results()
     )
     return result
@@ -612,72 +614,47 @@ def create_place_to_record_results():
     return output_file_name
 
 
-def keyboard_command_window():
-    pygame.init()
-    # modes = pygame.display.list_modes()
-    screen = pygame.display.set_mode((800, 600))
-    pygame.display.set_caption('Keyboard Commands')
-    pygame.mouse.set_visible(False)
-    bfont = pygame.font.SysFont(None, 48)
-    cfont = pygame.font.SysFont('Consolas', 12)
+EXACT_GAINS_X = [-2.82843,  # x
+                 -9.15175,  # x-dot
+                 0,  # y
+                 0,  # y-dot
+                 -16.0987,  # roll
+                 -15.3304,  # roll-dot
+                 0,  # pitch
+                 0]  # pitch-dot
 
-    text_to_screen_center(
-        bfont, 'Starting Keyboard Test', None, screen, 'white', 'black')
-
-    done = False
-    while not done:
-        for event in pygame.event.get():
-            if event.type == KEYUP:
-                text_to_screen_center(
-                    bfont, 'KEYUP:', event, screen, 'yellow', 'red')
-                print('KEYUP ' + str(event))
-                if event.key == pygame.K_q:
-                    done = True
-            elif event.type == KEYDOWN:
-                text_to_screen_center(
-                    bfont, 'KEYDOWN:', event, screen, 'blue', 'green')
-                print('KEYDOWN ' + str(event))
-    pygame.quit()
-
-
-def text_to_screen_center(bfont, text, event, screen, fgcolor, bgcolor):
-    screen.fill(THECOLORS[bgcolor])
-    if event is not None:
-        text += ' [ ' + chr(event.key) + ' ] [' + str(event.key) + ']'
-    btext = bfont.render(text, True, THECOLORS[fgcolor], THECOLORS[bgcolor])
-    brect = btext.get_rect()
-    brect.centerx = screen.get_rect().centerx
-    brect.centery = screen.get_rect().centery
-    arect = screen.blit(btext, brect)
-    pygame.display.update()
+EXACT_GAINS_Y = [0,  # x
+                 0,  # x-dot
+                 -2.82843,  # y
+                 -9.15175,  # y-dot
+                 0,  # roll
+                 0,  # roll-dot
+                 -16.0987,  # pitch
+                 -15.3304]  # pitch-dot
 
 
 game = game_factory()
 
-EXACT_LQR_CART_POLE_GAINS_X = [-2.82843,  # x
-                               -9.15175,  # x-dot
-                               0,  # y
-                               0,  # y-dot
-                               -16.0987,  # roll
-                               -15.3304,  # roll-dot
-                               0,  # pitch
-                               0]  # pitch-dot
 
-EXACT_LQR_CART_POLE_GAINS_Y = [0,  # x
-                               0,  # x-dot
-                               -2.82843,  # y
-                               -9.15175,  # y-dot
-                               0,  # roll
-                               0,  # roll-dot
-                               -16.0987,  # pitch
-                               -15.3304]  # pitch-dot
+theta = pi2 / 2
+sin_theta = np.sin(theta)
+cos_theta = np.cos(theta)
 
-quit()
 
 while True:
-    solutions = game.solve_pair_motion()
-    steps = zip(solutions[0], solutions[1])
-    [game.render([step[0][1], step[1][1]]) for step in steps]
+    for step in range(game.sim_constants.duration_second *
+                      game.sim_constants.steps_per_second):
+        t = step * game.sim_constants.delta_time
+        action_scalar = repeatable_disturbance(None, t) * game.action_force
+        fx = cos_theta * action_scalar
+        fy = sin_theta * action_scalar
+        _state0, _reward0, _done0, _info0 = game.pair[0].step(np.array([fx, fy]))
+        _state1, _reward1, _done1, _info1 = game.pair[1].step(np.array([fx, fy]))
+        time.sleep(game.sim_constants.delta_time / 2)
+        if _done0 and _done1:
+            break
+    game.keyboard_command_window()
+    quit()
     done = False
     while not done:
         for event in pygame.event.get():
@@ -693,12 +670,12 @@ while True:
         break
     elif is_six(c):
         if not game.ground_truth_mode:
-            ys_saved = copy.deepcopy(game.ys)
-            game.ys = copy.deepcopy(
+            ys_saved = np.copy(game.ys)
+            game.ys = np.copy(
                 [EXACT_LQR_CART_POLE_GAINS, EXACT_LQR_CART_POLE_GAINS])
             game.ground_truth_mode = True
         else:
-            game.ys = copy.deepcopy(ys_saved)
+            game.ys = np.copy(ys_saved)
             game.ground_truth_mode = False
     elif is_x(c):
         game.reset()
@@ -711,70 +688,5 @@ while True:
         game.process_command_search_mode(c)
         game.record_output(c)
 
+quit()
 
-# [bbeckman] This is the old code that parses arguments.
-
-opts.repeats = 1
-opts.gui = True
-opts.delay = 0.0125 / 2
-opts.action_force = 1.0
-discrete_actions = False
-env = bullet_cartpole.BulletCartpole(
-    opts=opts, discrete_actions=discrete_actions)
-# [bbeckman] These aren't exact, just shots in the dark, but not completely
-# nuts.
-for _ in range(opts.num_eval):
-    env.reset()
-    done = False
-    total_reward = 0
-    steps = 0
-    physical_pole_states_set_point = np.array(
-        [[0, 0, 0, 0, -np.pi / 2, 0, np.pi / 2, 0],
-         [0, 0, 0, 0, -np.pi / 2, 0, np.pi / 2, 0]])
-    physical_pole_states = np.array(
-        [[0, 0, 0, 0, -np.pi / 2 + 0.1, 0, np.pi / 2 + 0.1, 0],
-         [0, 0, 0, 0, -np.pi / 2 + 0.1, 0, np.pi / 2 + 0.1, 0]])
-    x_actions = np.array([None, None])
-    y_actions = np.array([None, None])
-    actions = np.array([None, None])
-    while not done:
-        residuals = physical_pole_states_set_point - physical_pole_states
-        for i in range(2):
-            x_actions[i] = np.dot(residuals[i], EXACT_LQR_CART_POLE_GAINS_X)
-            y_actions[i] = np.dot(residuals[i], EXACT_LQR_CART_POLE_GAINS_Y)
-            actions[i] = np.array([x_actions[i], y_actions[i]])
-
-        # TODO: [bbeckman] make this the physical state. Repulse the monkeys.
-        _state, reward, done, info = env.step(actions)
-
-        # [bbeckman] Get physical state from this "gym" state.
-        # q = _state[0][1][-4:]
-        # normalcy_check = np.dot(q, q)
-        # assert np.isclose(normalcy_check, 1.0)
-
-        # TODO: [bbeckman] get rid of 'repeats'
-        # TODO: [bbeckman] understand why there are five 'steps_per_repeat'
-        for r in range(env.repeats):
-            for i in range(2):
-                pos_means = np.mean(env.monkey_positions[i][r], axis=0)
-                mean_pos = pos_means[0]
-                mean_vel = pos_means[1]
-                ang_means = np.mean(env.monkey_velocities[i][r], axis=0)
-                mean_rpy = ang_means[0]
-                mean_rpy_dot = ang_means[1]
-
-                physical_pole_states[i] = np.array(
-                    [mean_pos[0], mean_vel[0],
-                     mean_pos[1], mean_vel[1],
-                     mean_rpy[0], mean_rpy_dot[0],
-                     mean_rpy[1], mean_rpy_dot[1],
-                     ])
-
-        steps += 1
-        total_reward += reward
-        if opts.max_episode_len is not None and steps > opts.max_episode_len:
-            break
-    print(total_reward)
-    keyboard_command_window()
-
-env.reset()  # hack to flush last event log if required

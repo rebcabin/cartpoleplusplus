@@ -2,7 +2,7 @@
 <robot name="cart">
   <link name="baseLink">
     <contact>
-      <lateral_friction value="1.0"/>
+      <lateral_friction value="0.25"/>
       <rolling_friction value="0.0"/>
       <inertia_scaling value="3.0"/>
       <contact_cfm value="0.0"/>
