@@ -469,8 +469,9 @@ class GameState(object):
         if self.ground_truth_mode:
             self.blit_line('---- G R O U N D - T R U T H - M O D E -----------')
             self.render_data()
-            self.current_left += self.column_spacing
-            self.current_top = min_top
+            # self.current_left += self.column_spacing
+            # self.current_top = min_top
+            self.blit_line(f"")
             self.blit_line(f'---- C O M M A N D S --------------------- Press:')
             self.blit_line(f"'0' to reset disturbance amplitude and replay")
             self.blit_line(f"'p' to toggle repeatable disturbance and replay")
@@ -495,8 +496,9 @@ class GameState(object):
         else:
             self.blit_line('---- S E A R C H - M O D E -----------------------')
             self.render_data()
-            self.current_left += self.column_spacing
-            self.current_top = min_top
+            # self.current_left += self.column_spacing
+            # self.current_top = min_top
+            self.blit_line(f"")
             self.blit_line(f'---- C O M M A N D S --------------------- Press:')
             self.blit_line(
                 f"'a' or 'l' to choose left video and tighten new search")
@@ -552,6 +554,7 @@ class GameState(object):
                     self.command_blast(event.key)
                     if event.key == pygame.K_q:
                         done = True
+
         pygame.quit()
 
     def command_blast(self, key, fg_color='green', bg_color='blue'):
@@ -576,8 +579,6 @@ class GameState(object):
         brect.centery = screen.get_rect().centery
         arect = screen.blit(btext, brect)
         pygame.display.update()
-
-
 
 
 def game_factory() -> GameState:
