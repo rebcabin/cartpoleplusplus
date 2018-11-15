@@ -113,74 +113,6 @@ class BulletCartpole(object):
 # Processing of Keyboard Commands
 
 
-def is_a_or_l(c):
-    return c == 65 or c == 97 or c == 76 or c == 108
-
-
-def is_b_or_r(c):
-    return c == 66 or c == 98 or c == 82 or c == 114
-
-
-def is_c(c):
-    return c == 67 or c == 99
-
-
-def is_zero(c):
-    return c == 48
-
-
-def is_six(c):
-    return c == 54
-
-
-def is_plus_or_equals(c):
-    return c == ord('+') or c == ord('=')
-
-
-def is_minus_or_underscore(c):
-    return c == ord('-') or c == ord('_')
-
-
-def is_n(c):
-    return c == 78 or c == 110
-
-
-def is_m(c):
-    return c == 77 or c == 109
-
-
-def is_q(c):
-    return c == 81 or c == 113
-
-
-def is_p(c):
-    return c == 80 or c == 112
-
-
-def is_x(c):
-    return c == 88 or c == 120
-
-
-def is_y(c):
-    return c == 89 or c == 121
-
-
-def is_replay_without_changes(c):
-    return command_name(c, None) == 'REPLAY_WITHOUT_CHANGES'
-
-
-def tighten_search(c):
-    return is_a_or_l(c) or is_b_or_r(c) or is_c(c)
-
-
-def loosen_search(c):
-    return is_y(c)
-
-
-def do_new_search(c):
-    return tighten_search(c) or loosen_search(c) or is_n(c)
-
-
 pp = PrettyPrinter(indent=2)
 pi2 = np.pi / 2
 two_pi = np.pi * 2
@@ -249,7 +181,6 @@ def very_noisy_disturbance(amplitude=3.0):
                               * np.exp((-10 * (t - rnd.randint(0, 16)) ** 2))
              for i in range(20)]
     return partial(sum_of_evaluated_funcs, funcs)
-
 
 
 sim_constants_ntup = ntup(
@@ -345,62 +276,62 @@ class GameState(object):
         self.ground_truth_mode = False
 
     def manipulate_disturbances(self, c):
-        if is_plus_or_equals(c):
+        if GameState.is_plus_or_equals(c):
             self.amplitude *= 2.0
-        elif is_minus_or_underscore(c):
+        elif GameState.is_minus_or_underscore(c):
             self.amplitude /= 2.0
-        elif is_zero(c):
+        elif GameState.is_zero(c):
             self.amplitude = self.amplitude0
-        elif is_p(c):
+        elif GameState.is_p(c):
             self.repeatable_q = not self.repeatable_q
-        elif is_m(c):
+        elif GameState.is_m(c):
             self.repeatable_q = False
 
     def command_name(self, c):
-        if is_six(c):
+        if GameState.is_six(c):
             return ('EXIT_GROUND_TRUTH_MODE'
                     if self.ground_truth_mode else
                     'ENTER_GROUND_TRUTH_MODE')
-        if is_a_or_l(c):
+        if GameState.is_a_or_l(c):
             return 'PICK_LEFT_AND_TIGHTEN_NEW_SEARCH'
-        if is_b_or_r(c):
+        if GameState.is_b_or_r(c):
             return 'PICK_RIGHT_AND_TIGHTEN_NEW_SEARCH'
-        if is_c(c):
+        if GameState.is_c(c):
             return 'PICK_RANDOMLY_AND_TIGHTEN_NEW_SEARCH'
-        if is_plus_or_equals(c):
+        if GameState.is_plus_or_equals(c):
             return 'DOUBLE_DISTURBANCE_AMPLITUDE_AND_REPLAY'
-        if is_minus_or_underscore(c):
+        if GameState.is_minus_or_underscore(c):
             return 'HALVE_DISTURBANCE_AMPLITUDE_AND_REPLAY'
-        if is_zero(c):
+        if GameState.is_zero(c):
             return 'RESET_DISTURBANCE_AMPLITUDE_AND_REPLAY'
-        if is_p(c):
+        if GameState.is_p(c):
             return 'TOGGLE_REPEATABLE_DISTURBANCE_AND_REPLAY'
-        if is_n(c):
+        if GameState.is_n(c):
             return 'NEW_SEARCH_WITHOUT_TIGHTENING'
-        if is_m(c):
+        if GameState.is_m(c):
             return 'NEW_DISTURBANCE_RUN_WITH_NO_OTHER_CHANGES'
-        if is_x(c):
+        if GameState.is_x(c):
             return 'START_AGAIN_FROM_SCRATCH'
-        if is_y(c):
+        if GameState.is_y(c):
             return 'LOOSEN_NEW_SEARCH'
-        if is_q(c):
+        if GameState.is_q(c):
             return 'QUIT'
         return 'REPLAY_WITHOUT_CHANGES'
 
     def process_command_search_mode(self, c):
-        if is_a_or_l(c):
+        if GameState.is_a_or_l(c):
             self.yp = np.copy(self.ys[0])
-        elif is_b_or_r(c):
+        elif GameState.is_b_or_r(c):
             self.yp = np.copy(self.ys[1])
-        elif is_c(c):
+        elif GameState.is_c(c):
             self.yp = np.copy(self.ys[rnd.randint(2)])
         else:
             self.manipulate_disturbances(c)
-        if do_new_search(c):
+        if GameState.do_new_search(c):
             self.new_search()
-        if tighten_search(c):
+        if GameState.tighten_search(c):
             self.tighten()
-        elif loosen_search(c):
+        elif GameState.loosen_search(c):
             self.loosen()
 
     def process_command_ground_truth_mode(self, c):
@@ -413,25 +344,36 @@ class GameState(object):
         self.cov /= self.search_constants.decay
 
     def new_search(self):
-        self.ys[0] = np.array(np.random.multivariate_normal(self.yp, self.cov))
-        self.ys[1] = np.array(np.random.multivariate_normal(self.yp, self.cov))
+        self.ys[0][0] = \
+            np.array(np.random.multivariate_normal(self.yp[0], self.cov))
+        self.ys[0][1] = \
+            np.array(np.random.multivariate_normal(self.yp[1], self.cov))
+
+        self.ys[1][0] = \
+            np.array(np.random.multivariate_normal(self.yp[0], self.cov))
+        self.ys[1][1] = \
+            np.array(np.random.multivariate_normal(self.yp[1], self.cov))
 
     def record_output(self, c):
+        # np.ndarray not json-serializable.
         output_dict = \
-            {'y_chosen': list(self.yp),  # np.ndarray not json-serializable.
+            {'y_chosen': list(map(list, self.yp)),
              'time_stamp':
                  f"{datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}",
-             'left_guess': list(self.ys[0]),
-             'right_guess': list(self.ys[1]),
+             'left_guess': list(map(list, self.ys[0])),
+             'right_guess': list(map(list, self.ys[1])),
              'disturbance_amplitude': self.amplitude,
              'repeatable_disturbance': self.repeatable_q,
-             'truth': EXACT_LQR_CART_POLE_GAINS,
+             'truth': [EXACT_GAINS_X, EXACT_GAINS_Y],
              'distance_from_left_guess_to_truth':
-                 distance.euclidean(self.ys[0], EXACT_LQR_CART_POLE_GAINS),
+                 [distance.euclidean(self.ys[0][0], EXACT_GAINS_X),
+                  distance.euclidean(self.ys[0][1], EXACT_GAINS_Y)],
              'distance_from_right_guess_to_truth':
-                 distance.euclidean(self.ys[1], EXACT_LQR_CART_POLE_GAINS),
-             'command': command_name(c, self.ground_truth_mode),
-             'dimensions': self.sim_constants.dimensions,
+                 [distance.euclidean(self.ys[1][0], EXACT_GAINS_X),
+                  distance.euclidean(self.ys[1][1], EXACT_GAINS_Y)],
+             'command': self.command_name(c),
+             'state_dimensions': self.sim_constants.state_dimensions,
+             'action_dimensions': self.sim_constants.action_dimensions,
              'sigma': np.sqrt(self.cov[0][0]),
              'trial_count': self.trial_count,
              'output_file_name': self.output_file_name}
@@ -558,9 +500,8 @@ class GameState(object):
             for event in pygame.event.get():
                 if event.type == KEYUP:
                     self.command_blast(event.key)
-                    if event.key == pygame.K_q:
-                        done = True
-                        result = event.key
+                    done = True
+                    result = event.key
 
         pygame.quit()
         return result
@@ -576,6 +517,77 @@ class GameState(object):
         b_rect.centery = self.text_rect.centery
         _rect = self.screen.blit(b_text, b_rect)
         pygame.display.update()
+
+    @staticmethod
+    def is_a_or_l(c):
+        return c == 65 or c == 97 or c == 76 or c == 108
+
+    @staticmethod
+    def is_b_or_r(c):
+        return c == 66 or c == 98 or c == 82 or c == 114
+
+    @staticmethod
+    def is_c(c):
+        return c == 67 or c == 99
+
+    @staticmethod
+    def is_zero(c):
+        return c == 48
+
+    @staticmethod
+    def is_six(c):
+        return c == 54
+
+    @staticmethod
+    def is_plus_or_equals(c):
+        return c == ord('+') or c == ord('=')
+
+    @staticmethod
+    def is_minus_or_underscore(c):
+        return c == ord('-') or c == ord('_')
+
+    @staticmethod
+    def is_n(c):
+        return c == 78 or c == 110
+
+    @staticmethod
+    def is_m(c):
+        return c == 77 or c == 109
+
+    @staticmethod
+    def is_q(c):
+        return c == 81 or c == 113
+
+    @staticmethod
+    def is_p(c):
+        return c == 80 or c == 112
+
+    @staticmethod
+    def is_x(c):
+        return c == 88 or c == 120
+
+    @staticmethod
+    def is_y(c):
+        return c == 89 or c == 121
+
+    def is_replay_without_changes(self, c):
+        return self.command_name(c, None) == 'REPLAY_WITHOUT_CHANGES'
+
+    @staticmethod
+    def tighten_search(c):
+        return GameState.is_a_or_l(c) \
+               or GameState.is_b_or_r(c) \
+               or GameState.is_c(c)
+
+    @staticmethod
+    def loosen_search(c):
+        return GameState.is_y(c)
+
+    @staticmethod
+    def do_new_search(c):
+        return GameState.tighten_search(c) \
+               or GameState.loosen_search(c) \
+               or GameState.is_n(c)
 
 
 def game_factory() -> GameState:
@@ -679,9 +691,9 @@ while True:
             break
     c = game.keyboard_command_window()
 
-    if is_q(c):
+    if GameState.is_q(c):
         break
-    elif is_six(c):
+    elif GameState.is_six(c):
         if not game.ground_truth_mode:
             ys_saved = np.copy(game.ys)
             game.ys = np.copy([
@@ -693,7 +705,7 @@ while True:
             # will intentionally blow up.
             game.ys = np.copy(ys_saved)
             game.ground_truth_mode = False
-    elif is_x(c):
+    elif GameState.is_x(c):
         game.reset()
         continue
 
