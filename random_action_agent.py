@@ -28,6 +28,11 @@ from scipy.spatial import distance
 
 class BulletCartpole(object):
 
+    """It might seem natural to have the thresholds maintained outside this
+    class, however, it mimics the Gym interface of OpenAI. Its 'step' method
+    is responsible for reporting when it's done. Therefore, 'step' must know
+    these thresholds."""
+
     X = 0
     X_DOT = 1
     Y = 2
@@ -38,7 +43,8 @@ class BulletCartpole(object):
     PITCH_DOT = 7
 
     def __init__(self, bullet_cart_id, bullet_pole_id,
-                 position_threshold, angle_threshold):
+                 position_threshold, angle_threshold,
+                 initial_state, lqr_zero_point):
 
         self.cart = bullet_cart_id
         self.pole = bullet_pole_id
@@ -47,7 +53,21 @@ class BulletCartpole(object):
 
         # x, x_dot, y, y_dot, roll, roll_dot, pitch, pitch_dot
 
-        self.state = np.zeros(8)
+        self.initial_state = np.copy(initial_state)
+        self.state = np.copy(initial_state)
+        self.lqr_zero_point = np.copy(lqr_zero_point)
+
+        # The LQR, itself, is two 8-vectors of gains, the first, yp[0], to
+        # generate control forces in the x direction, the second, yp[1], to
+        # generate control forces in the Y direction. yp is the "preferred"
+        # or current search center.
+
+        self.yp = np.zeros((2, 8))
+
+        # The current guesses. ys[0] is the pair of 8-vectors for the left
+        # cart-pole. ys[1] is the pair of 8-vectors for the right cart-pole.
+
+        self.ys = np.copy([self.yp, self.yp])
 
         # Full information from pybullet, in case we want it.
 
@@ -55,10 +75,16 @@ class BulletCartpole(object):
         self.rpy = None
         self.vel = None
 
+    def lqr_control_forces(self):
+        residual = self.state - self.lqr_zero_point
+        corrections = [- np.dot(self.yp[0], residual),
+                       - np.dot(self.yp[1], residual)]
+        return corrections
+
     def step(self, action: np.ndarray):
         _info = {}
         p.stepSimulation()
-        fx, fy = action
+        fx, fy = action + self.lqr_control_forces()
         p.applyExternalForce(
             self.cart, -1, (fx, fy, 0), (0, 0, 0), p.LINK_FRAME)
         self._observe_state()
@@ -238,17 +264,10 @@ def very_noisy_disturbance(amplitude=3.0):
     return partial(sum_of_evaluated_funcs, funcs)
 
 
-def lqr_control_force(gains, zero_point, state, t_ignore):
-    residual = np.array(state) - np.array(zero_point)
-    correction = - np.dot(gains, residual)
-    return correction
-
 
 sim_constants_ntup = ntup(
     'SimConstants',
-    ['seed', 'dimensions', 'duration_second', 'steps_per_second',
-     'initial_condition', 'lqr_zero_point', 'delta_time',
-     'position_threshold', 'angle_threshold'])
+    ['seed', 'dimensions', 'duration_second', 'steps_per_second', 'delta_time'])
 
 search_constants_ntup = ntup(
     'SearchConstants',
@@ -259,6 +278,7 @@ command_screen_constants_ntup = ntup(
     ['width', 'height']
 )
 
+
 class GameState(object):
 
     def __init__(
@@ -268,13 +288,8 @@ class GameState(object):
             dimensions=8,
             duration_second=30,
             steps_per_second=60,
-            initial_condition=
-            np.array([0, 0, 0, 0, pi2 + 0.1, 0, pi2 + 0.1, 0]),
-            lqr_zero_point=np.array([0, 0, 0, 0, pi2, 0, pi2, 0]),
             delta_time=1.0 / 60.0,  # TODO: pybullet default time ?
             action_force=5.0,
-            position_threshold=3.0,
-            angle_threshold=0.35,  # radian ~~ 20 deg
             search_covariance_decay=0.975,
             search_radius=20,
             command_screen_width=800,
@@ -300,11 +315,7 @@ class GameState(object):
             dimensions=dimensions,
             duration_second=duration_second,
             steps_per_second=steps_per_second,
-            initial_condition=initial_condition,
-            lqr_zero_point=lqr_zero_point,
-            delta_time=delta_time,
-            position_threshold=position_threshold,
-            angle_threshold=angle_threshold
+            delta_time=delta_time
         )
 
         # If the seed is zero, it's falsey, and "None" will be passed in,
@@ -320,7 +331,7 @@ class GameState(object):
             height=command_screen_height,
             width=command_screen_width)
 
-        # Some empty slots for pygame control of the command window.
+        # Empty slots for pygame control of the command window.
 
         self.screen = None
         self.text_surface = None
@@ -431,9 +442,9 @@ class GameState(object):
              'trial_count': self.trial_count,
              'output_file_name': self.output_file_name}
         pp.pprint(output_dict)
-        jsout = json.dumps(output_dict, indent=2)
+        js_out = json.dumps(output_dict, indent=2)
         with open(self.output_file_name, "a") as output_file_pointer:
-            print(jsout, file=output_file_pointer)
+            print(js_out, file=output_file_pointer)
         time.sleep(1)
 
     def render_data(self):
@@ -548,36 +559,28 @@ class GameState(object):
         pygame.display.flip()
 
         done = False
+        result = None
         while not done:
             for event in pygame.event.get():
                 if event.type == KEYUP:
                     self.command_blast(event.key)
                     if event.key == pygame.K_q:
                         done = True
+                        result = event.key
 
         pygame.quit()
+        return result
 
     def command_blast(self, key, fg_color='green', bg_color='blue'):
-        text = self.command_name(key) \
-               + ' [ ' + chr(key) + ' ] [' + str(key) + ']'
+        text = \
+            self.command_name(key) + ' [ ' + chr(key) + ' ] [' + str(key) + ']'
         b_text = self.dpy_font.render(
-            #     <--> antialiased
+            #    |True| = antialiased
             text, True, THECOLORS[fg_color], THECOLORS[bg_color])
         b_rect = b_text.get_rect()
         b_rect.centerx = self.text_rect.centerx
         b_rect.centery = self.text_rect.centery
         _rect = self.screen.blit(b_text, b_rect)
-        pygame.display.update()
-
-    def text_to_screen_center(self, text, event, screen, fgcolor, bgcolor):
-        screen.fill(THECOLORS[bgcolor])
-        if event is not None:
-            text += ' [ ' + chr(event.key) + ' ] [' + str(event.key) + ']'
-        btext = self.dpy_font.render(text, True, THECOLORS[fgcolor], THECOLORS[bgcolor])
-        brect = btext.get_rect()
-        brect.centerx = screen.get_rect().centerx
-        brect.centery = screen.get_rect().centery
-        arect = screen.blit(btext, brect)
         pygame.display.update()
 
 
@@ -602,14 +605,22 @@ def game_factory() -> GameState:
 
     position_threshold = 3.0
     angle_threshold = 0.35
-    pair = [BulletCartpole(cart1, pole1, position_threshold, angle_threshold),
-            BulletCartpole(cart2, pole2, position_threshold, angle_threshold)]
+    initial_state = np.array([0, 0, 0, 0, pi2 + 0.1, 0, pi2 + 0.1, 0])
+    lqr_zero_point = np.array([0, 0, 0, 0, pi2, 0, pi2, 0])
+
+    pair = [
+        BulletCartpole(
+            cart1, pole1,
+            position_threshold, angle_threshold,
+            initial_state, lqr_zero_point),
+        BulletCartpole(
+            cart2, pole2,
+            position_threshold, angle_threshold,
+            initial_state, lqr_zero_point)]
 
     result = GameState(
         seed=0,
         pair=pair,
-        position_threshold=position_threshold,
-        angle_threshold=angle_threshold,
         output_file_name=create_place_to_record_results()
     )
     return result
@@ -669,28 +680,18 @@ while True:
         time.sleep(game.sim_constants.delta_time / 2)
         if _done0 and _done1:
             break
-    game.keyboard_command_window()
-    quit()
-    done = False
-    while not done:
-        for event in pygame.event.get():
-            if event.type == KEYUP:
-                c = event.key
-                done = True
-
-    text_to_screen(
-        command_name(c, game.ground_truth_mode), c,
-        game.pair.screen, game.pair.text_rect, 'cyan', 'blue')
+    c = game.keyboard_command_window()
 
     if is_q(c):
         break
     elif is_six(c):
         if not game.ground_truth_mode:
             ys_saved = np.copy(game.ys)
-            game.ys = np.copy(
-                [EXACT_LQR_CART_POLE_GAINS, EXACT_LQR_CART_POLE_GAINS])
+            game.ys = np.copy([EXACT_GAINS_X, EXACT_GAINS_Y])
             game.ground_truth_mode = True
         else:
+            # If the game logic is wrong, the reference to ys_saved
+            # will intentionally blow up.
             game.ys = np.copy(ys_saved)
             game.ground_truth_mode = False
     elif is_x(c):
