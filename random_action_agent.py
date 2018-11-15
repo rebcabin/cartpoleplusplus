@@ -57,34 +57,21 @@ class BulletCartpole(object):
         self.state = np.copy(initial_state)
         self.lqr_zero_point = np.copy(lqr_zero_point)
 
-        # The LQR, itself, is two 8-vectors of gains, the first, yp[0], to
-        # generate control forces in the x direction, the second, yp[1], to
-        # generate control forces in the Y direction. yp is the "preferred"
-        # or current search center.
-
-        self.yp = np.zeros((2, 8))
-
-        # The current guesses. ys[0] is the pair of 8-vectors for the left
-        # cart-pole. ys[1] is the pair of 8-vectors for the right cart-pole.
-
-        self.ys = np.copy([self.yp, self.yp])
-
         # Full information from pybullet, in case we want it.
 
         self.pso = None
         self.rpy = None
         self.vel = None
 
-    def lqr_control_forces(self):
+    def lqr_control_forces(self, controller):
         residual = self.state - self.lqr_zero_point
-        corrections = [- np.dot(self.yp[0], residual),
-                       - np.dot(self.yp[1], residual)]
+        corrections = (- np.dot(controller, residual))
         return corrections
 
     def step(self, action: np.ndarray):
         _info = {}
         p.stepSimulation()
-        fx, fy = action + self.lqr_control_forces()
+        fx, fy = action
         p.applyExternalForce(
             self.cart, -1, (fx, fy, 0), (0, 0, 0), p.LINK_FRAME)
         self._observe_state()
@@ -267,7 +254,10 @@ def very_noisy_disturbance(amplitude=3.0):
 
 sim_constants_ntup = ntup(
     'SimConstants',
-    ['seed', 'dimensions', 'duration_second', 'steps_per_second', 'delta_time'])
+    ['seed',
+     'state_dimensions', 'action_dimensions',
+     'duration_second', 'steps_per_second', 'delta_time',
+     'action_force_multiplier'])
 
 search_constants_ntup = ntup(
     'SearchConstants',
@@ -285,11 +275,12 @@ class GameState(object):
             self, pair,
             output_file_name=None,
             seed=8420,
-            dimensions=8,
+            state_dimensions=8,
+            action_dimensions=2,
             duration_second=30,
             steps_per_second=60,
             delta_time=1.0 / 60.0,  # TODO: pybullet default time ?
-            action_force=5.0,
+            action_force_multiplier=5.0,
             search_covariance_decay=0.975,
             search_radius=20,
             command_screen_width=800,
@@ -297,26 +288,29 @@ class GameState(object):
         self.pair = pair
         self.output_file_name = output_file_name
 
-        self.cov0 = (search_radius ** 2) * np.identity(dimensions)
+        self.cov0 = (search_radius ** 2) * np.identity(state_dimensions)
         self.cov = np.copy(self.cov0)
-        self.y0 = np.zeros(dimensions)
-        self.yp = np.zeros(dimensions)
-        self.ys = [np.zeros(dimensions), np.zeros(dimensions)]
+        self.y0 = np.zeros((action_dimensions, state_dimensions))
+        self.yp = np.zeros((action_dimensions, state_dimensions))
+        self.ys = [np.copy(self.y0), np.copy(self.y0)]
+
         self.amplitude0 = 1.0
         self.amplitude = 1.0
-        self.repeatable_q = True
-        self.ground_truth_mode = False
-        self.trial_count = 0
 
-        self.action_force = action_force
+        self.repeatable_q = True
+
+        self.ground_truth_mode = False
+
+        self.trial_count = 0
 
         self.sim_constants = sim_constants_ntup(
             seed=seed,
-            dimensions=dimensions,
+            state_dimensions=state_dimensions,
+            action_dimensions=action_dimensions,
             duration_second=duration_second,
             steps_per_second=steps_per_second,
-            delta_time=delta_time
-        )
+            delta_time=delta_time,
+            action_force_multiplier=action_force_multiplier)
 
         # If the seed is zero, it's falsey, and "None" will be passed in,
         # causing non-repeatable pseudo-randoms.
@@ -671,12 +665,15 @@ while True:
     for step in range(game.sim_constants.duration_second *
                       game.sim_constants.steps_per_second):
         t = step * game.sim_constants.delta_time
-        action_scalar = repeatable_disturbance(None, t) * game.action_force
+        action_scalar = repeatable_disturbance(None, t) \
+            * game.sim_constants.action_force_multiplier
         fx = cos_theta * action_scalar
         fy = sin_theta * action_scalar
         force = np.array([fx, fy])
-        _state0, _reward0, _done0, _info0 = game.pair[0].step(force)
-        _state1, _reward1, _done1, _info1 = game.pair[1].step(force)
+        control = [game.pair[i].lqr_control_forces(game.ys[i])
+                   for i in range(2)]
+        _state0, _rwd0, _done0, _info0 = game.pair[0].step(force + control[0])
+        _state1, _rwd1, _done1, _info1 = game.pair[1].step(force + control[1])
         time.sleep(game.sim_constants.delta_time / 2)
         if _done0 and _done1:
             break
@@ -687,7 +684,9 @@ while True:
     elif is_six(c):
         if not game.ground_truth_mode:
             ys_saved = np.copy(game.ys)
-            game.ys = np.copy([EXACT_GAINS_X, EXACT_GAINS_Y])
+            game.ys = np.copy([
+                [EXACT_GAINS_X, EXACT_GAINS_Y],
+                [EXACT_GAINS_X, EXACT_GAINS_Y]])
             game.ground_truth_mode = True
         else:
             # If the game logic is wrong, the reference to ys_saved
