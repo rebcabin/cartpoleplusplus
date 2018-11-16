@@ -15,6 +15,11 @@ from collections import namedtuple as ntup
 import os
 import json
 
+# Windowing
+
+import os
+import tkinter as tk
+
 # Rendering
 
 import pygame
@@ -49,6 +54,7 @@ class BulletCartpole(object):
 
         self.cart = bullet_cart_id
         self.pole = bullet_pole_id
+
         self.position_threshold = position_threshold
         self.angle_threshold = angle_threshold
 
@@ -67,6 +73,9 @@ class BulletCartpole(object):
         self.rpy = None
         self.vel = None
 
+        # Verified that, at least at initialization time,
+        # the observed (physics) state matches the bullet state.
+
         self._observe_state()
 
     def lqr_control_forces(self, controller):
@@ -75,23 +84,27 @@ class BulletCartpole(object):
         return corrections
 
     def step(self, action: np.ndarray):
-        _info = {}
         p.stepSimulation()
         fx, fy = action
         p.applyExternalForce(
             self.cart, -1, (fx, fy, 0), (0, 0, 0), p.LINK_FRAME)
         self._observe_state()
-        _done = False
-        if abs(self.pole_state[self.X]) > self.position_threshold \
-                or abs(self.pole_state[self.Y]) > self.position_threshold:
-            _info['done_reason'] = 'position bounds exceeded'
-            _done = True
-        elif np.abs(self.pole_state[self.ROLL]) > self.angle_threshold \
-                or abs(self.pole_state[self.PITCH]) > self.angle_threshold:
-            _info['done_reason'] = 'orientation bounds exceeded'
-            _done = True
+        _done, _info = self._check_done()
         _reward = 0.0
         return np.copy(self.pole_state), _reward, _done, _info
+
+    def _check_done(self):
+        _done = False
+        _info = {}
+        if abs(self.pole_state[self.X]) > self.position_threshold \
+                or abs(self.pole_state[self.Y]) > self.position_threshold:
+            _done = True
+            _info['done_reason'] = 'position bounds exceeded'
+        elif np.abs(self.pole_state[self.ROLL]) > self.angle_threshold \
+                or abs(self.pole_state[self.PITCH]) > self.angle_threshold:
+            _done = True
+            _info['done_reason'] = 'orientation bounds exceeded'
+        return _done, _info
 
     def _observe_state(self):
         self.pso = p.getBasePositionAndOrientation(self.pole)
@@ -107,8 +120,6 @@ class BulletCartpole(object):
         self.pole_state[self.PITCH_DOT] = self.vel[1][1]
 
     def reset(self):
-
-        # reset pole on cart in starting poses
         p.resetBasePositionAndOrientation(
             self.cart,
             self.initial_cart_bullet_state[0:3],
@@ -117,7 +128,6 @@ class BulletCartpole(object):
             self.pole,
             self.initial_pole_bullet_state[0:3],
             self.initial_pole_bullet_state[3:])
-
         self._observe_state()
         return np.copy(self.pole_state)
 
@@ -218,15 +228,20 @@ class GameState(object):
             self, pair,
             output_file_name=None,
             seed=8420,
+
             state_dimensions=8,
             action_dimensions=2,
+
             duration_second=30,
             steps_per_second=60,
             delta_time=1.0 / 60.0,  # TODO: pybullet default time ?
+
             action_force_multiplier=5.0,
+
             search_covariance_decay=0.975,
             search_radius=20,
-            command_screen_width=800,
+
+            command_screen_width=600,
             command_screen_height=600):
         self.pair = pair
         self.output_file_name = output_file_name
@@ -276,7 +291,10 @@ class GameState(object):
         self.dpy_font = None
         self.data_font = None
 
+        # More window-control stuff
+
         self.pygame_inited = False
+        self.tk_root = None
 
     def __del__(self):
         pygame.quit()
@@ -496,6 +514,16 @@ class GameState(object):
 
     def keyboard_command_window(self):
         if not self.pygame_inited:
+            self.tk_root = tk.Tk()
+            embed = tk.Frame(
+                self.tk_root,
+                width=self.cmdwin.width, height=self.cmdwin.height)
+            embed.pack()
+            os.environ['SDL_WINDOWID'] = str(embed.winfo_id())
+            os.environ['SDL_VIDEODRIVER'] = 'windib'  # needed on windows.
+            self.tk_root.geometry("+0+0")
+            self.tk_root.update()
+
             pygame.init()
             # modes = pygame.display.list_modes()
             self.screen = pygame.display.set_mode(self.cmdwin)  # as tuple
@@ -516,6 +544,11 @@ class GameState(object):
         result = None
         while not done:
             for event in pygame.event.get():
+                if event.type == KEYDOWN and event.key == K_SPACE:
+                    rw = rnd.randint(0, 800)
+                    rh = rnd.randint(0, 600)
+                    str2 = f"+{rw}+{rh}"
+
                 if event.type == KEYUP:
                     self.command_blast(event.key)
                     done = True
@@ -688,6 +721,7 @@ EXACT_GAINS_X = [-2.82843,  # x
                  -15.3304,  # roll-dot
                  0,  # pitch
                  0]  # pitch-dot
+
 
 EXACT_GAINS_Y = [0,  # x
                  0,  # x-dot

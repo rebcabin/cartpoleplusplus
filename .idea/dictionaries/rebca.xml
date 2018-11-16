@@ -12,6 +12,9 @@
       <w>pybullet</w>
       <w>pygame</w>
       <w>urdf</w>
+      <w>videodriver</w>
+      <w>windib</w>
+      <w>windowid</w>
     </words>
   </dictionary>
 </component>
