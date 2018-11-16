@@ -236,12 +236,12 @@ class GameState(object):
             steps_per_second=60,
             delta_time=1.0 / 60.0,  # TODO: pybullet default time ?
 
-            action_force_multiplier=5.0,
+            action_force_multiplier=2.5,
 
             search_covariance_decay=0.975,
             search_radius=20,
 
-            command_screen_width=600,
+            command_screen_width=750,
             command_screen_height=600):
         self.pair = pair
         self.output_file_name = output_file_name
@@ -295,6 +295,14 @@ class GameState(object):
 
         self.pygame_inited = False
         self.tk_root = None
+
+        # Window-content stuff
+
+        self.current_left = 10
+        self.current_top = 10
+        self.line_spacing = 14
+        self.column_spacing = (self.cmdwin.width - 20) / 2 - 40
+
 
     def __del__(self):
         pygame.quit()
@@ -420,13 +428,16 @@ class GameState(object):
     def render_data(self):
         sigma0 = np.round(np.sqrt(self.cov0[0][0]), 4)
         sigma = np.round(np.sqrt(self.cov[0][0]), 4)
-        self.blit_line(f'σ0:            {sigma0}')
-        self.blit_line(f'y0:            {np.round(self.y0, 4)}')
-        self.blit_line(f'σ:             {sigma}')
-        self.blit_line(f'search center: {np.round(self.yp, 4)}')
-        self.blit_line(f'left guess     {np.round(self.ys[0], 4)}')
-        self.blit_line(f'right guess    {np.round(self.ys[1], 4)}')
-        self.blit_line(f'trial number   {self.trial_count}')
+        self.blit_line(f'σ0:              {sigma0}')
+        self.blit_line(f'y0:              {np.round(self.y0, 4)}')
+        self.blit_line(f'σ:               {sigma}')
+        self.blit_line(f'search center: [ {np.round(self.yp[0], 4)}')
+        self.blit_line(f'                 {np.round(self.yp[1], 4)} ]')
+        self.blit_line(f'left guess     [ {np.round(self.ys[0][0], 4)}')
+        self.blit_line(f'                 {np.round(self.ys[0][1], 4)} ]')
+        self.blit_line(f'right guess    [ {np.round(self.ys[1][0], 4)}')
+        self.blit_line(f'                 {np.round(self.ys[1][1], 4)} ]')
+        self.blit_line(f'trial number     {self.trial_count}')
         self.blit_line(f'disturbance amplitude {self.amplitude}')
         self.blit_line(f'disturbance is repeatable? {self.repeatable_q}')
 
@@ -444,76 +455,56 @@ class GameState(object):
         min_left = 10
         self.current_left = min_left
         self.current_top = min_top
-        self.line_spacing = 14
-        self.column_spacing = (self.cmdwin.width - 20) / 2 - 40
 
         if self.ground_truth_mode:
             self.blit_line('---- G R O U N D - T R U T H - M O D E -----------')
             self.render_data()
-            # self.current_left += self.column_spacing
-            # self.current_top = min_top
             self.blit_line(f"")
             self.blit_line(f'---- C O M M A N D S --------------------- Press:')
             self.blit_line(f"'0' to reset disturbance amplitude and replay")
             self.blit_line(f"'p' to toggle repeatable disturbance and replay")
             self.blit_line(f"")
-            self.blit_line(
-                f"    ... if both look good and you can't tell which is better, try")
-            self.blit_line(
-                f"'m' to generate new disturbances, no other changes (implies non-repeatability)")
-            self.blit_line(
-                f"'+' or '=' to double the disturbance amplitude and replay")
-            self.blit_line(
-                f"    ... if both look bad and you can't tell which is better, try")
-            self.blit_line(
-                f"'-' or '_' to halve the disturbance amplitude and replay")
+            self.blit_line(f"    ... if both look good and you can't tell which is better, try")
+            self.blit_line(f"'m' to generate new disturbances, no other changes (implies non-repeatability)")
+            self.blit_line(f"'+' or '=' to double the disturbance amplitude and replay")
+            self.blit_line(f"    ... if both look bad and you can't tell which is better, try")
+            self.blit_line(f"'-' or '_' to halve the disturbance amplitude and replay")
             self.blit_line(f"")
-            self.blit_line(
-                f"'x' to start over from scratch if you think it's not going to converge")
+            self.blit_line(f"'x' to start over from scratch if you think it's not going to converge")
             self.blit_line(f"'6' to leave ground-truth mode and replay")
             self.blit_line(f"'q' to quit")
-            self.blit_line(
-                f"or any other key to replay without choosing, tightening, or loosening")
+            self.blit_line(f"or any other key to replay without choosing, tightening, or loosening")
         else:
             self.blit_line('---- S E A R C H - M O D E -----------------------')
             self.render_data()
-            # self.current_left += self.column_spacing
-            # self.current_top = min_top
             self.blit_line(f"")
             self.blit_line(f'---- C O M M A N D S --------------------- Press:')
-            self.blit_line(
-                f"'a' or 'l' to choose left video and tighten new search")
-            self.blit_line(
-                f"'b' or 'r' to choose right video and tighten new search")
+            self.blit_line(f"'a' or 'l' to choose left video and tighten new search")
+            self.blit_line(f"'b' or 'r' to choose right video and tighten new search")
             self.blit_line(f"'c' to choose randomly and tighten new search")
-            self.blit_line(
-                f"'n' to search again without choosing, tightening, or loosening")
+            self.blit_line(f"'n' to search again without choosing, tightening, or loosening")
             self.blit_line(f"'y' to loosen new search without choosing")
             self.blit_line(f"'0' to reset disturbance amplitude and replay")
             self.blit_line(f"'p' to toggle repeatable disturbance and replay")
             self.blit_line(f"")
-            self.blit_line(
-                f"    ... if both look good and you can't tell which is better, try")
-            self.blit_line(
-                f"'m' to generate new disturbances, no other changes (implies non-repeatability)")
-            self.blit_line(
-                f"'+' or '=' to double the disturbance amplitude and replay")
-            self.blit_line(
-                f"    ... if both look bad and you can't tell which is better, try")
-            self.blit_line(
-                f"'-' or '_' to halve the disturbance amplitude and replay")
+            self.blit_line(f"    ... if both look good and you can't tell which is better, try")
+            self.blit_line(f"'m' to generate new disturbances, no other changes (implies non-repeatability)")
+            self.blit_line(f"'+' or '=' to double the disturbance amplitude and replay")
+            self.blit_line(f"    ... if both look bad and you can't tell which is better, try")
+            self.blit_line(f"'-' or '_' to halve the disturbance amplitude and replay")
             self.blit_line(f"")
-            self.blit_line(
-                f"'x' to start over from scratch if you think it's not going to converge")
+            self.blit_line(f"'x' to start over from scratch if you think it's not going to converge")
             self.blit_line(f"'6' to enter ground-truth mode and replay")
             self.blit_line(f"'q' to quit")
-            self.blit_line(
-                f"or any other key to replay without choosing, tightening, or loosening")
+            self.blit_line(f"or any other key to replay without choosing, tightening, or loosening")
 
         self.screen.blit(self.text_surface, self.text_rect)
 
     def keyboard_command_window(self):
         if not self.pygame_inited:
+
+            # Tk voodoo for positioning the keyboard-command window.
+
             self.tk_root = tk.Tk()
             embed = tk.Frame(
                 self.tk_root,
@@ -525,9 +516,9 @@ class GameState(object):
             self.tk_root.update()
 
             pygame.init()
-            # modes = pygame.display.list_modes()
+            # modes = pygame.display.list_modes()  # don't throw away
             self.screen = pygame.display.set_mode(self.cmdwin)  # as tuple
-            pygame.display.set_caption('Keyboard Commands')
+            pygame.display.set_caption('Keyboard Commands')  # tk kills this
             pygame.mouse.set_visible(False)
             self.dpy_font = pygame.font.SysFont(None, 48)
             self.data_font = pygame.font.SysFont('Consolas', 12)
@@ -537,6 +528,7 @@ class GameState(object):
                 0, 0, self.cmdwin.width, self.cmdwin.height)
             self.pygame_inited = True
 
+        self.text_surface.fill(THECOLORS['black'])
         self.render_text()
         pygame.display.flip()
 
@@ -544,11 +536,6 @@ class GameState(object):
         result = None
         while not done:
             for event in pygame.event.get():
-                if event.type == KEYDOWN and event.key == K_SPACE:
-                    rw = rnd.randint(0, 800)
-                    rh = rnd.randint(0, 600)
-                    str2 = f"+{rw}+{rh}"
-
                 if event.type == KEYUP:
                     self.command_blast(event.key)
                     done = True
@@ -642,7 +629,7 @@ class GameState(object):
 
 def game_factory() -> GameState:
 
-    p.connect(p.GUI)
+    _temp = p.connect(p.GUI)
     p.setGravity(0, 0, -9.81)
 
     p.loadURDF("models/ground.urdf", 0, 0, 0, 0, 0, 0, 1)
