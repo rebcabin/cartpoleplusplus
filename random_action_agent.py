@@ -44,7 +44,8 @@ class BulletCartpole(object):
 
     def __init__(self, bullet_cart_id, bullet_pole_id,
                  position_threshold, angle_threshold,
-                 initial_state, lqr_zero_point):
+                 initial_pole_state, lqr_zero_point,
+                 initial_cart_bullet_state, initial_pole_bullet_state):
 
         self.cart = bullet_cart_id
         self.pole = bullet_pole_id
@@ -53,9 +54,12 @@ class BulletCartpole(object):
 
         # x, x_dot, y, y_dot, roll, roll_dot, pitch, pitch_dot
 
-        self.initial_state = np.copy(initial_state)
-        self.state = np.copy(initial_state)
+        self.initial_pole_state = np.copy(initial_pole_state)
+        self.pole_state = np.copy(initial_pole_state)
         self.lqr_zero_point = np.copy(lqr_zero_point)
+
+        self.initial_cart_bullet_state = initial_cart_bullet_state
+        self.initial_pole_bullet_state = initial_pole_bullet_state
 
         # Full information from pybullet, in case we want it.
 
@@ -63,8 +67,10 @@ class BulletCartpole(object):
         self.rpy = None
         self.vel = None
 
+        self._observe_state()
+
     def lqr_control_forces(self, controller):
-        residual = self.state - self.lqr_zero_point
+        residual = self.pole_state - self.lqr_zero_point
         corrections = (- np.dot(controller, residual))
         return corrections
 
@@ -76,38 +82,44 @@ class BulletCartpole(object):
             self.cart, -1, (fx, fy, 0), (0, 0, 0), p.LINK_FRAME)
         self._observe_state()
         _done = False
-        if abs(self.state[self.X]) > self.position_threshold \
-                or abs(self.state[self.Y]) > self.position_threshold:
+        if abs(self.pole_state[self.X]) > self.position_threshold \
+                or abs(self.pole_state[self.Y]) > self.position_threshold:
             _info['done_reason'] = 'position bounds exceeded'
             _done = True
-        elif np.abs(self.state[self.ROLL]) > self.angle_threshold \
-                or abs(self.state[self.PITCH]) > self.angle_threshold:
+        elif np.abs(self.pole_state[self.ROLL]) > self.angle_threshold \
+                or abs(self.pole_state[self.PITCH]) > self.angle_threshold:
             _info['done_reason'] = 'orientation bounds exceeded'
             _done = True
         _reward = 0.0
-        return np.copy(self.state), _reward, _done, _info
+        return np.copy(self.pole_state), _reward, _done, _info
 
     def _observe_state(self):
         self.pso = p.getBasePositionAndOrientation(self.pole)
         self.rpy = p.getEulerFromQuaternion(self.pso[1])
         self.vel = p.getBaseVelocity(self.pole)
-        self.state[self.X] = self.pso[0][0]
-        self.state[self.Y] = self.pso[0][1]
-        self.state[self.ROLL] = self.rpy[0]
-        self.state[self.PITCH] = self.rpy[1]
-        self.state[self.X_DOT] = self.vel[0][0]
-        self.state[self.Y_DOT] = self.vel[0][1]
-        self.state[self.ROLL_DOT] = self.vel[1][0]
-        self.state[self.PITCH_DOT] = self.vel[1][1]
+        self.pole_state[self.X] = self.pso[0][0]
+        self.pole_state[self.Y] = self.pso[0][1]
+        self.pole_state[self.ROLL] = self.rpy[0]
+        self.pole_state[self.PITCH] = self.rpy[1]
+        self.pole_state[self.X_DOT] = self.vel[0][0]
+        self.pole_state[self.Y_DOT] = self.vel[0][1]
+        self.pole_state[self.ROLL_DOT] = self.vel[1][0]
+        self.pole_state[self.PITCH_DOT] = self.vel[1][1]
 
     def reset(self):
 
         # reset pole on cart in starting poses
-        p.resetBasePositionAndOrientation(self.cart, (0, 0, 0.08), (0, 0, 0, 1))
-        p.resetBasePositionAndOrientation(self.pole, (0, 0, 0.35), (0, 0, 0, 1))
+        p.resetBasePositionAndOrientation(
+            self.cart,
+            self.initial_cart_bullet_state[0:3],
+            self.initial_cart_bullet_state[3:])
+        p.resetBasePositionAndOrientation(
+            self.pole,
+            self.initial_pole_bullet_state[0:3],
+            self.initial_pole_bullet_state[3:])
 
         self._observe_state()
-        return np.copy(self.state)
+        return np.copy(self.pole_state)
 
 
 # Processing of Keyboard Commands
@@ -335,9 +347,11 @@ class GameState(object):
             self.tighten()
         elif GameState.loosen_search(c):
             self.loosen()
+        _result = [p.reset() for p in self.pair]
 
     def process_command_ground_truth_mode(self, c):
         self.manipulate_disturbances(c)
+        _result = [p.reset() for p in self.pair]
 
     def tighten(self):
         self.cov *= self.search_constants.decay
@@ -600,11 +614,17 @@ def game_factory() -> GameState:
 
     p.loadURDF("models/ground.urdf", 0, 0, 0, 0, 0, 0, 1)
 
-    cart1 = p.loadURDF("models/cart.urdf", 0, 0, 0.08, 0, 0, 0, 1)
-    pole1 = p.loadURDF("models/pole.urdf", 0, 0, 0.35, 0, 0, 0, 1)
+    initial_cart1_bullet_state = -0.5, 0, 0.08, 0, 0, 0, 1
+    cart1 = p.loadURDF("models/cart.urdf",  *initial_cart1_bullet_state)
 
-    cart2 = p.loadURDF("models/cart2.urdf", 0, 0, 0.08, 0, 0, 0, 1)
-    pole2 = p.loadURDF("models/pole2.urdf", 0, 0, 0.35, 0, 0, 0, 1)
+    initial_pole1_bullet_state = -0.5, 0, 0.35, 0, 0, 0, 1
+    pole1 = p.loadURDF("models/pole.urdf",  *initial_pole1_bullet_state)
+
+    initial_cart2_bullet_state =  0.5, 0, 0.08, 0, 0, 0, 1
+    cart2 = p.loadURDF("models/cart2.urdf", *initial_cart2_bullet_state)
+
+    initial_pole2_bullet_state =  0.5, 0, 0.35, 0, 0, 0, 1
+    pole2 = p.loadURDF("models/pole2.urdf", *initial_pole2_bullet_state)
 
     # [bbeckman] Camera params found by bisective trial-and-error.
     p.resetDebugVisualizerCamera(cameraYaw=0,
@@ -614,18 +634,29 @@ def game_factory() -> GameState:
 
     position_threshold = 3.0
     angle_threshold = 0.35
-    initial_state = np.array([0, 0, 0, 0, pi2 + 0.1, 0, pi2 + 0.1, 0])
-    lqr_zero_point = np.array([0, 0, 0, 0, pi2, 0, pi2, 0])
 
     pair = [
         BulletCartpole(
             cart1, pole1,
             position_threshold, angle_threshold,
-            initial_state, lqr_zero_point),
+            initial_pole_state=
+            #           X   X' Y  Y' roll  roll'  pitch  pitch'
+            np.array([-0.5, 0, 0, 0, 0,    0,     0,     0]),
+            lqr_zero_point=
+            np.array([-0.5, 0, 0, 0, 0,    0,     0,     0]),
+            initial_cart_bullet_state=initial_cart1_bullet_state,
+            initial_pole_bullet_state=initial_pole1_bullet_state
+        ),
         BulletCartpole(
             cart2, pole2,
             position_threshold, angle_threshold,
-            initial_state, lqr_zero_point)]
+            initial_pole_state=
+            np.array([+0.5, 0, 0, 0, 0,    0,     0,     0]),
+            lqr_zero_point=
+            np.array([+0.5, 0, 0, 0, 0,    0,     0,     0]),
+            initial_cart_bullet_state=initial_cart2_bullet_state,
+            initial_pole_bullet_state=initial_pole2_bullet_state
+        )]
 
     result = GameState(
         seed=0,
