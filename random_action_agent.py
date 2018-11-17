@@ -110,7 +110,9 @@ class BulletCartpole(object):
         self.pso = p.getBasePositionAndOrientation(self.pole)
         self.rpy = p.getEulerFromQuaternion(self.pso[1])
         self.vel = p.getBaseVelocity(self.pole)
-        self.pole_state[self.X] = self.pso[0][0]
+        # want the x position relative to its initial condition
+        self.pole_state[self.X] = \
+            self.pso[0][0] - self.initial_pole_state[0]
         self.pole_state[self.Y] = self.pso[0][1]
         self.pole_state[self.ROLL] = self.rpy[0]
         self.pole_state[self.PITCH] = self.rpy[1]
@@ -425,21 +427,32 @@ class GameState(object):
             print(js_out, file=output_file_pointer)
         time.sleep(1)
 
+    @staticmethod
+    def format_vector(v):
+        ps0 = np.round(v, 4)
+        ss0 = [f"{p:8.4f}" for p in ps0]
+        st0 = '[' + ', '.join(ss0) + ']'
+        return st0
+
     def render_data(self):
         sigma0 = np.round(np.sqrt(self.cov0[0][0]), 4)
         sigma = np.round(np.sqrt(self.cov[0][0]), 4)
         self.blit_line(f'σ0:              {sigma0}')
-        self.blit_line(f'y0:              {np.round(self.y0, 4)}')
+        self.blit_line(f'y0:            [ {self.format_vector(self.y0[0])}')
+        self.blit_line(f'                 {self.format_vector(self.y0[1])} ]')
         self.blit_line(f'σ:               {sigma}')
-        self.blit_line(f'search center: [ {np.round(self.yp[0], 4)}')
-        self.blit_line(f'                 {np.round(self.yp[1], 4)} ]')
-        self.blit_line(f'left guess     [ {np.round(self.ys[0][0], 4)}')
-        self.blit_line(f'                 {np.round(self.ys[0][1], 4)} ]')
-        self.blit_line(f'right guess    [ {np.round(self.ys[1][0], 4)}')
-        self.blit_line(f'                 {np.round(self.ys[1][1], 4)} ]')
+        self.blit_line(f'search center: [ {self.format_vector(self.yp[0])}')
+        self.blit_line(f'                 {self.format_vector(self.yp[1])} ]')
+        self.blit_line(f'left guess     [ {self.format_vector(self.ys[0][0])}')
+        self.blit_line(f'                 {self.format_vector(self.ys[0][1])} ]')
+        self.blit_line(f'right guess    [ {self.format_vector(self.ys[1][0])}')
+        self.blit_line(f'                 {self.format_vector(self.ys[1][1])} ]')
         self.blit_line(f'trial number     {self.trial_count}')
         self.blit_line(f'disturbance amplitude {self.amplitude}')
         self.blit_line(f'disturbance is repeatable? {self.repeatable_q}')
+        self.blit_line(f'pole 0 state     {self.format_vector(self.pair[0].pole_state)}')
+        self.blit_line(f'pole 1 state     {self.format_vector(self.pair[1].pole_state)}')
+
 
     def blit_line(self, the_text):
         b_text = self.data_font.render(
@@ -503,7 +516,7 @@ class GameState(object):
     def keyboard_command_window(self):
         if not self.pygame_inited:
 
-            # Tk voodoo for positioning the keyboard-command window.
+            # Tk voodoo for positioning the keyboard-command window
 
             self.tk_root = tk.Tk()
             embed = tk.Frame(
@@ -515,18 +528,22 @@ class GameState(object):
             self.tk_root.geometry("+0+0")
             self.tk_root.update()
 
+            # the pygame keyboard-interaction window itself
+
             pygame.init()
             # modes = pygame.display.list_modes()  # don't throw away
             self.screen = pygame.display.set_mode(self.cmdwin)  # as tuple
             pygame.display.set_caption('Keyboard Commands')  # tk kills this
             pygame.mouse.set_visible(False)
-            self.dpy_font = pygame.font.SysFont(None, 48)
+            self.dpy_font = pygame.font.SysFont(None, 36)
             self.data_font = pygame.font.SysFont('Consolas', 12)
             self.text_surface = pygame.Surface(self.cmdwin)
             self.text_surface.fill(THECOLORS['black'])
             self.text_rect = pygame.Rect(
                 0, 0, self.cmdwin.width, self.cmdwin.height)
             self.pygame_inited = True
+
+            # TODO: figure out how to position the pybullet sim window
 
         self.text_surface.fill(THECOLORS['black'])
         self.render_text()
