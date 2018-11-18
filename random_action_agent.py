@@ -647,8 +647,8 @@ def game_factory() -> GameState:
 
     # --------------------------------------------------------------------------
     # Failed experiment at moving the pybullet window out of the way.
-    # Importing autogui makes the windows render without scaling, which
-    # is tiny on my 4K screen.
+    # Importing pyautogui makes the windows render without scaling,
+    # tiny on my 4K screen.
 
     # Move the pybullet window to the right.
     # You'll probably have to redo these magic numbers on your screen.
@@ -659,7 +659,8 @@ def game_factory() -> GameState:
     # --------------------------------------------------------------------------
     p.setGravity(0, 0, -9.81)
 
-    # The ground is thick. Top surface is 0.05 meters above the zero plane.
+    # The ground is thick. Top surface is 0.050 meters above the zero plane.
+    # This thickness affects the correct starting height for a cart.
 
     p.loadURDF("models/ground.urdf", 0, 0, 0, 0, 0, 0, 1)
 
@@ -670,37 +671,39 @@ def game_factory() -> GameState:
     #                        .25, 0.5, 0.08, 0, 0, 0, 1)
     #
 
+    # --------------------------------------------------------------------------
     # A cart is thick. The bottom surface is 0.025 m below its center.
-    # Starting it at a height of 0.080 leaves a 0.005 m gap for it to fall
-    # freely before hitting the ground. When it hits the ground, its top
-    # is at z = 0.050(ground) + 0.050(cart).
+    # Starting it at a height of 0.050(ground) + 0.025(half-thickness) +
+    # a tiny jitter to prevent explosion is correct. The mid-plane of
+    # the cart does NOT appear to be at 0.000, but at -0.0125, the
+    # origin of that last link in the URDF file. Empirically, then, we
+    # add 0.0125 to the initial height of the cart to get it to appear
+    # without falling and without jumping up out of the floor (by bullet's
+    # penalty method of collision correction). We say "empirically" because
+    # we have not found justification for this hack in the documentation.
 
-    initial_cart1_bullet_state = -0.5, 0, 0.08, 0, 0, 0, 1
+    jitter = 0.00001
+    initial_cart1_bullet_state = -0.5, 0, 0.075 + 0.0125 + jitter, 0, 0, 0, 1
     cart1 = p.loadURDF("models/double_cart_1.urdf", *initial_cart1_bullet_state)
 
-    # The top of the cart, before falling, is at 0.080 + 0.025 = 0.105
-
     # --------------------------------------------------------------------------
-    # A pole is 0.500 m long. Placing its center at 0.350 means that its
-    # bottom is at height 0.350 - 0.250 = 0.100, inside the top of the
-    # cart before falling, but right at the top after falling. This doesn't
-    # sound good. It may give the pole some undefined and possibly random
-    # behavior. I change it to 0.355 to accommodate the fall.
+    # A pole is 0.500 m long. It should start at height 0.250(half-pole) +
+    # 0.050(cart height) + 0.050(half-ground) + jitter
 
-    initial_pole1_bullet_state = -0.5, 0, 0.355, 0, 0, 0, 1
-    pole1 = p.loadURDF("models/pole.urdf",  *initial_pole1_bullet_state)
+    initial_pole1_bullet_state = -0.5, 0, 0.250 + 0.100 + jitter, 0, 0, 0, 1
+    pole1 = p.loadURDF("models/pole1.urdf",  *initial_pole1_bullet_state)
 
-    initial_cart2_bullet_state =  0.5, 0, 0.08, 0, 0, 0, 1
+    initial_cart2_bullet_state =  0.5, 0, 0.075 + 0.0125 + jitter, 0, 0, 0, 1
     cart2 = p.loadURDF("models/double_cart_2.urdf", *initial_cart2_bullet_state)
 
-    initial_pole2_bullet_state =  0.5, 0, 0.355, 0, 0, 0, 1
+    initial_pole2_bullet_state =  0.5, 0, 0.250 + 0.100 + jitter, 0, 0, 0, 1
     pole2 = p.loadURDF("models/pole2.urdf", *initial_pole2_bullet_state)
 
     # [bbeckman] Camera params found by bisective trial-and-error.
     p.resetDebugVisualizerCamera(cameraYaw=0,
                                  cameraTargetPosition=(0, 0, 0),
                                  cameraPitch=-24,
-                                 cameraDistance=1.5)
+                                 cameraDistance=1.25)
 
     position_threshold = 3.0
     angle_threshold = 0.35

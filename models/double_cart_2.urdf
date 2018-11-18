@@ -1,4 +1,16 @@
 <?xml version="1.0"?>
+<!--
+
+A cart has a top half for friction with the pole and a bottom half
+frictionless against the ground. The bottom half is colored like ice.
+
+The total mass of a cart is 1.000 kg. Its width and length is 20 cm.
+Its height is 5 cm. The top half has a height of 2.5 cm and is located
+1.25 cm above the mid-plane. The bottom half has a height of 2.5 cm and
+is located 1.25 cm below the mid-plane. The cart is materialized above
+the floor by code in 'game_factory'.
+
+-->
 <robot name="cart">
   <link name="upperLinkWithFriction">
     <contact>
@@ -21,7 +33,7 @@
         <box size="0.200    0.200    0.025"/>
       </geometry>
       <material name="frictionMat">
-        <color rgba="0.200    0.900    0.100    1.000"/>
+        <color rgba="0.200    0.900    0.100    0.750"/>
       </material>
     </visual>
     <collision>
