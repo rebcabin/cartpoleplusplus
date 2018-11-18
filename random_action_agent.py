@@ -797,7 +797,7 @@ theta = pi2 / 2
 sin_theta = np.sin(theta)
 cos_theta = np.cos(theta)
 
-speed_up_time_factor = 2  # TODO: fix this along with pybullet delta T.
+speed_up_time_factor = 2  # TODO: fix this along with pybullet delta-t.
 
 n_steps = game.sim_constants.duration_second \
           * game.sim_constants.steps_per_second
@@ -826,15 +826,15 @@ while True:
             disturbances[i, step] = disturbance[i]
             controls[LEFT, i, step] = control[LEFT][i]
             controls[RIGHT, i, step] = control[RIGHT][i]
-        stateL, _rwd0, _doneL, _infoL = \
+        stateL, _rwdL, doneL, _infoL = \
             game.pair[LEFT].step(disturbance + control[LEFT])
-        stateR, _rwd1, _doneR, _infoR = \
+        stateR, _rwdR, doneR, _infoR = \
             game.pair[RIGHT].step(disturbance + control[RIGHT])
         for j in range(game.sim_constants.state_dimensions):
             states[LEFT, j, step] = stateL[j]
             states[RIGHT, j, step] = stateR[j]
         time.sleep(game.sim_constants.delta_time / speed_up_time_factor)
-        if _doneL and _doneR:
+        if doneL and doneR:
             break
     c = game.keyboard_command_window()
 

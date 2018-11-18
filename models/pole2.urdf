@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <robot name="pole2">
-  <link name="baseLink">
+  <link name="baseLinkPole2">
     <contact>
       <lateral_friction value="1.0"/>
       <rolling_friction value="0.0"/>
@@ -18,16 +18,16 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="0.01 0.01 0.5"/>
+        <box size="0.010    0.010    0.500"/>
       </geometry>
-      <material name="blockmat">
+      <material name="blockmatPole2">
         <color rgba="0.7 0.2 0.7 1"/>
       </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="0.01 0.01 0.5"/>
+        <box size="0.010    0.010    0.500"/>
       </geometry>
     </collision>
   </link>

@@ -11,8 +11,8 @@ is located 1.25 cm below the mid-plane. The cart is materialized above
 the floor by code in 'game_factory'.
 
 -->
-<robot name="cart">
-  <link name="upperLinkWithFriction">
+<robot name="cart2">
+  <link name="upperLinkWithFriction2">
     <contact>
       <lateral_friction value="1.0"/>
       <rolling_friction value="0.0"/>
@@ -43,7 +43,7 @@ the floor by code in 'game_factory'.
       </geometry>
     </collision>
   </link>
-  <link name="lowerFrictionlessLink">
+  <link name="lowerFrictionlessLink2">
     <contact>
       <lateral_friction value="0.0"/>
       <rolling_friction value="0.0"/>
@@ -74,8 +74,8 @@ the floor by code in 'game_factory'.
       </geometry>
     </collision>
   </link>
-  <joint name="halfBlocksGlue" type="fixed">
-   <parent link="upperLinkWithFriction"/>
-   <child link="lowerFrictionlessLink"/>
+  <joint name="halfBlocksGlue2" type="fixed">
+   <parent link="upperLinkWithFriction2"/>
+   <child link="lowerFrictionlessLink2"/>
   </joint>
  </robot>
