@@ -241,7 +241,7 @@ class GameState(object):
             search_radius=20,
 
             command_screen_width=750,
-            command_screen_height=600):
+            command_screen_height=780):
         self.pair = pair
         self.output_file_name = output_file_name
 
@@ -301,7 +301,6 @@ class GameState(object):
         self.current_top = 10
         self.line_spacing = 14
         self.column_spacing = (self.cmdwin.width - 20) / 2 - 40
-
 
     def __del__(self):
         pygame.quit()
@@ -447,9 +446,12 @@ class GameState(object):
         self.blit_line(f'trial number     {self.trial_count}')
         self.blit_line(f'disturbance amplitude {self.amplitude}')
         self.blit_line(f'disturbance is repeatable? {self.repeatable_q}')
+        self.blit_line(f'disturbance[0]   {self.format_vector(disturbances[:, 0])}')
+        self.blit_line(f'last disturbance {self.format_vector(disturbances[:, -1])}')
+        self.blit_line(f'control[0]       {self.format_vector(controls[0, :,  0])}, {self.format_vector(controls[1, :,  0])}')
+        self.blit_line(f'last control     {self.format_vector(controls[0, :, -1])}, {self.format_vector(controls[1, :, -1])}')
         self.blit_line(f'pole 0 state     {self.format_vector(self.pair[0].pole_state)}')
         self.blit_line(f'pole 1 state     {self.format_vector(self.pair[1].pole_state)}')
-
 
     def blit_line(self, the_text):
         b_text = self.data_font.render(
@@ -786,19 +788,34 @@ cos_theta = np.cos(theta)
 
 speed_up_time_factor = 2
 
+n_steps = game.sim_constants.duration_second \
+          * game.sim_constants.steps_per_second
+
 while True:
-    for step in range(game.sim_constants.duration_second *
-                      game.sim_constants.steps_per_second):
+    disturbances = np.zeros((game.sim_constants.action_dimensions, n_steps))
+    controls = np.zeros((2, game.sim_constants.action_dimensions, n_steps))
+    states = np.zeros((2, game.sim_constants.state_dimensions, n_steps))
+
+    for step in range(n_steps):
         t = step * game.sim_constants.delta_time
         action_scalar = repeatable_disturbance(None, t) \
             * game.sim_constants.action_force_multiplier
         fx = cos_theta * action_scalar
         fy = sin_theta * action_scalar
-        force = np.array([fx, fy])
+        disturbance = np.array([fx, fy])
         control = [game.pair[i].lqr_control_forces(game.ys[i])
                    for i in range(2)]
-        _state0, _rwd0, _done0, _info0 = game.pair[0].step(force + control[0])
-        _state1, _rwd1, _done1, _info1 = game.pair[1].step(force + control[1])
+        for i in range(game.sim_constants.action_dimensions):
+            disturbances[i, step] = disturbance[i]
+            controls[0, i, step] = control[0][i]
+            controls[1, i, step] = control[1][i]
+        state0, _rwd0, _done0, _info0 = \
+            game.pair[0].step(disturbance + control[0])
+        state1, _rwd1, _done1, _info1 = \
+            game.pair[1].step(disturbance + control[1])
+        for j in range(game.sim_constants.state_dimensions):
+            states[0, j, step] = state0[j]
+            states[1, j, step] = state1[j]
         time.sleep(game.sim_constants.delta_time / speed_up_time_factor)
         if _done0 and _done1:
             break
