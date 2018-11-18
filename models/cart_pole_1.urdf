@@ -1,0 +1,117 @@
+<?xml version="1.0"?>
+<robot name="cartPole1">
+  <link name="gimbal">
+    <contact>
+      <lateral_friction value="0.0"/>
+      <rolling_friction value="0.0"/>
+      <inertia_scaling value="3.0"/>
+      <contact_cfm value="0.0"/>
+      <contact_erp value="1.0"/>
+    </contact>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="0"/>
+      <inertia ixx="0" ixy="0" ixz="0"
+               iyy="0" iyz="0"
+               izz="0"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <box size="0 0 0"/>
+      </geometry>
+      <material name="blockmat">
+        <color rgba="1.0 1.0 1.0 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <box size="0 0 0"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="pole">
+    <contact>
+      <lateral_friction value="0.0"/>
+      <rolling_friction value="0.0"/>
+      <inertia_scaling value="3.0"/>
+      <contact_cfm value="0.0"/>
+      <contact_erp value="1.0"/>
+    </contact>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0.55"/>
+      <mass value="5"/>
+ <!--     <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>-->
+ <!--     <inertia ixx="0.104333333333" ixy="0" ixz="0"-->
+               <!--iyy="0.104333333333" iyz="0"-->
+               <!--izz="0.000333333333"/>-->
+ <!-- Uncomment the above when the short dimension is 0.02, 2 cm -->
+ <!-- The following is for a base of 0.01 m, 1 cm -->
+      <inertia ixx="0.104208333333333" ixy="0" ixz="0"
+               iyy="0.104208333333333" iyz="0"
+               izz="0.00008333333333"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0.55"/>
+      <geometry>
+        <box size="0.01 0.01 0.5"/>
+      </geometry>
+      <material name="blockmat">
+        <color rgba="0.2 0.7 0.1 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0.55"/>
+      <geometry>
+        <box size="0.01 0.01 0.5"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="cart">
+    <contact>
+      <lateral_friction value="0.0"/>
+      <rolling_friction value="0.0"/>
+      <inertia_scaling value="3.0"/>
+      <contact_cfm value="0.0"/>
+      <contact_erp value="1.0"/>
+    </contact>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <mass value="1"/>
+ <!--     <inertia ixx="1" ixy="0" ixz="0" iyy="1" iyz="0" izz="1"/>-->
+      <inertia ixx="0.0035416666666" ixy="0" ixz="0"
+               iyy="0.0035416666666" iyz="0"
+               izz="0.0066666666666"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <box size="0.20 0.20 0.05"/>
+      </geometry>
+      <material name="blockmat">
+        <color rgba="0.90 0.20 0.10 1"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <box size="0.20 0.20 0.05"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="pitch_gimbal" type="revolute">
+   <parent link="pole"/>
+   <child link="gimbal"/>
+   <axis xyz="0 1 0"/>
+   <limit lower="-0.785398163398" upper="0.785398163398"/>
+   <origin xyz="0 0 0.05"/>
+  </joint>
+  <joint name="roll_gimbal" type="revolute">
+   <parent link="gimbal"/>
+   <child link="cart"/>
+   <axis xyz="1 0 0"/>
+   <limit lower="-0.785398163398" upper="0.785398163398"/>
+   <origin xyz="0 0 0.05"/>
+  </joint>
+ </robot>

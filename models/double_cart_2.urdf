@@ -1,0 +1,69 @@
+<?xml version="1.0"?>
+<robot name="cart">
+  <link name="upperLinkWithFriction">
+    <contact>
+      <lateral_friction value="1.0"/>
+      <rolling_friction value="0.0"/>
+      <inertia_scaling value="3.0"/>
+      <contact_cfm value="0.0"/>
+      <contact_erp value="1.0"/>
+    </contact>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.000    0.000    0.0125"/>
+      <mass value="0.500"/>
+       <inertia ixx="0.001770833333" ixy="0" ixz="0"
+               iyy="0.0017708333333" iyz="0"
+               izz="0.0033333333333"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.000    0.000    0.0125"/>
+      <geometry>
+        <box size="0.200    0.200    0.025"/>
+      </geometry>
+      <material name="frictionMat">
+        <color rgba="0.200    0.900    0.100    1.000"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0.000    0.000    0.0125"/>
+      <geometry>
+        <box size="0.200    0.200    0.025"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="lowerFrictionlessLink">
+    <contact>
+      <lateral_friction value="0.0"/>
+      <rolling_friction value="0.0"/>
+      <inertia_scaling value="3.0"/>
+      <contact_cfm value="0.0"/>
+      <contact_erp value="1.0"/>
+    </contact>
+    <inertial>
+      <origin rpy="0 0 0" xyz="0.000    0.000   -0.0125"/>
+      <mass value="0.500"/>
+       <inertia ixx="0.001770833333" ixy="0" ixz="0"
+               iyy="0.0017708333333" iyz="0"
+               izz="0.0033333333333"/>
+    </inertial>
+    <visual>
+      <origin rpy="0 0 0" xyz="0.000    0.000   -0.0125"/>
+      <geometry>
+        <box size="0.200    0.200    0.025"/>
+      </geometry>
+      <material name="iceMat">
+        <color rgba="0.050    0.800    0.800    0.500"/>
+      </material>
+    </visual>
+    <collision>
+      <origin rpy="0 0 0" xyz="0.000    0.000   -0.0125"/>
+       <geometry>
+        <box size="0.200    0.200    0.025"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="halfBlocksGlue" type="fixed">
+   <parent link="upperLinkWithFriction"/>
+   <child link="lowerFrictionlessLink"/>
+  </joint>
+ </robot>

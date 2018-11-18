@@ -12,13 +12,13 @@ from functools import partial
 from toolz import reduce
 from pprint import PrettyPrinter
 from collections import namedtuple as ntup
-import os
 import json
 
 # Windowing
 
 import os
 import tkinter as tk
+# import pyautogui as gui
 
 # Rendering
 
@@ -36,7 +36,7 @@ class BulletCartpole(object):
     """It might seem natural to have the thresholds maintained outside this
     class, however, it mimics the Gym interface of OpenAI. Its 'step' method
     is responsible for reporting when it's done. Therefore, 'step' must know
-    these thresholds."""
+    these thresholds. For the simulation, we make two of these."""
 
     X = 0
     X_DOT = 1
@@ -99,11 +99,11 @@ class BulletCartpole(object):
         if abs(self.pole_state[self.X]) > self.position_threshold \
                 or abs(self.pole_state[self.Y]) > self.position_threshold:
             _done = True
-            _info['done_reason'] = 'position bounds exceeded'
+            _info['done_reason'] = 'cart position bounds exceeded'
         elif np.abs(self.pole_state[self.ROLL]) > self.angle_threshold \
                 or abs(self.pole_state[self.PITCH]) > self.angle_threshold:
             _done = True
-            _info['done_reason'] = 'orientation bounds exceeded'
+            _info['done_reason'] = 'pole angle bounds exceeded'
         return _done, _info
 
     def _observe_state(self):
@@ -132,9 +132,6 @@ class BulletCartpole(object):
             self.initial_pole_bullet_state[3:])
         self._observe_state()
         return np.copy(self.pole_state)
-
-
-# Processing of Keyboard Commands
 
 
 pp = PrettyPrinter(indent=2)
@@ -647,20 +644,56 @@ class GameState(object):
 def game_factory() -> GameState:
 
     _temp = p.connect(p.GUI)
+
+    # --------------------------------------------------------------------------
+    # Failed experiment at moving the pybullet window out of the way.
+    # Importing autogui makes the windows render without scaling, which
+    # is tiny on my 4K screen.
+
+    # Move the pybullet window to the right.
+    # You'll probably have to redo these magic numbers on your screen.
+
+    # gui.moveTo(1500, 50)
+    # gui.dragRel(500)
+
+    # --------------------------------------------------------------------------
     p.setGravity(0, 0, -9.81)
+
+    # The ground is thick. Top surface is 0.05 meters above the zero plane.
 
     p.loadURDF("models/ground.urdf", 0, 0, 0, 0, 0, 0, 1)
 
-    initial_cart1_bullet_state = -0.5, 0, 0.08, 0, 0, 0, 1
-    cart1 = p.loadURDF("models/cart.urdf",  *initial_cart1_bullet_state)
+    # --------------------------------------------------------------------------
+    # Failed experiment with gimbals.
+    #
+    # cartpole1 = p.loadURDF("models/cart_pole_1.urdf",
+    #                        .25, 0.5, 0.08, 0, 0, 0, 1)
+    #
 
-    initial_pole1_bullet_state = -0.5, 0, 0.35, 0, 0, 0, 1
+    # A cart is thick. The bottom surface is 0.025 m below its center.
+    # Starting it at a height of 0.080 leaves a 0.005 m gap for it to fall
+    # freely before hitting the ground. When it hits the ground, its top
+    # is at z = 0.050(ground) + 0.050(cart).
+
+    initial_cart1_bullet_state = -0.5, 0, 0.08, 0, 0, 0, 1
+    cart1 = p.loadURDF("models/double_cart_1.urdf", *initial_cart1_bullet_state)
+
+    # The top of the cart, before falling, is at 0.080 + 0.025 = 0.105
+
+    # --------------------------------------------------------------------------
+    # A pole is 0.500 m long. Placing its center at 0.350 means that its
+    # bottom is at height 0.350 - 0.250 = 0.100, inside the top of the
+    # cart before falling, but right at the top after falling. This doesn't
+    # sound good. It may give the pole some undefined and possibly random
+    # behavior. I change it to 0.355 to accommodate the fall.
+
+    initial_pole1_bullet_state = -0.5, 0, 0.355, 0, 0, 0, 1
     pole1 = p.loadURDF("models/pole.urdf",  *initial_pole1_bullet_state)
 
     initial_cart2_bullet_state =  0.5, 0, 0.08, 0, 0, 0, 1
-    cart2 = p.loadURDF("models/cart2.urdf", *initial_cart2_bullet_state)
+    cart2 = p.loadURDF("models/double_cart_2.urdf", *initial_cart2_bullet_state)
 
-    initial_pole2_bullet_state =  0.5, 0, 0.35, 0, 0, 0, 1
+    initial_pole2_bullet_state =  0.5, 0, 0.355, 0, 0, 0, 1
     pole2 = p.loadURDF("models/pole2.urdf", *initial_pole2_bullet_state)
 
     # [bbeckman] Camera params found by bisective trial-and-error.
@@ -679,8 +712,12 @@ def game_factory() -> GameState:
             initial_pole_state=
             #           X   X' Y  Y' roll  roll'  pitch  pitch'
             np.array([-0.5, 0, 0, 0, 0,    0,     0,     0]),
+            # During dynamics, we always subtract the initial pole state from
+            # the actual state, to arrive at a state relative to the initial.
+            # Therefore, our lqr zero point should always be in that relative
+            # frame of reference.
             lqr_zero_point=
-            np.array([-0.5, 0, 0, 0, 0,    0,     0,     0]),
+            np.array([  0,  0, 0, 0, 0,    0,     0,     0]),
             initial_cart_bullet_state=initial_cart1_bullet_state,
             initial_pole_bullet_state=initial_pole1_bullet_state
         ),
@@ -690,7 +727,7 @@ def game_factory() -> GameState:
             initial_pole_state=
             np.array([+0.5, 0, 0, 0, 0,    0,     0,     0]),
             lqr_zero_point=
-            np.array([+0.5, 0, 0, 0, 0,    0,     0,     0]),
+            np.array([  0,  0, 0, 0, 0,    0,     0,     0]),
             initial_cart_bullet_state=initial_cart2_bullet_state,
             initial_pole_bullet_state=initial_pole2_bullet_state
         )]
@@ -744,6 +781,7 @@ theta = pi2 / 2
 sin_theta = np.sin(theta)
 cos_theta = np.cos(theta)
 
+speed_up_time_factor = 2
 
 while True:
     for step in range(game.sim_constants.duration_second *
@@ -758,7 +796,7 @@ while True:
                    for i in range(2)]
         _state0, _rwd0, _done0, _info0 = game.pair[0].step(force + control[0])
         _state1, _rwd1, _done1, _info1 = game.pair[1].step(force + control[1])
-        time.sleep(game.sim_constants.delta_time / 2)
+        time.sleep(game.sim_constants.delta_time / speed_up_time_factor)
         if _done0 and _done1:
             break
     c = game.keyboard_command_window()
