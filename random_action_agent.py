@@ -237,8 +237,8 @@ class GameState(object):
             action_dimensions=2,
 
             duration_second=30,
-            steps_per_second=60,
-            delta_time=1.0 / 60.0,  # TODO: pybullet default time ?
+            steps_per_second=240,
+            delta_time=1.0 / 240.0,  # TODO: pybullet default time ?
 
             # Pybullet default time is apparently 1 / 240 (according to the
             # quick-start guide). Big TODO to fix this.
