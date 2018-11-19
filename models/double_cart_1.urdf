@@ -5,9 +5,9 @@ A cart has a top half for friction with the pole and a bottom half
 frictionless against the ground. The bottom half is colored like ice.
 
 The total mass of a cart is 1.000 kg. Its width and length is 20 cm.
-Its height is 5 cm. The top half has a height of 2.5 cm and is located
+Its height is 5 cm. The top half has a height of 2.5 cm and is centered
 1.25 cm above the mid-plane. The bottom half has a height of 2.5 cm and
-is located 1.25 cm below the mid-plane. The cart is materialized above
+is centered 1.25 cm below the mid-plane. The cart is materialized above
 the floor by code in 'game_factory'.
 
 -->

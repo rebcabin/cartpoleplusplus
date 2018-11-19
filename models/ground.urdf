@@ -9,16 +9,16 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="3 3 0.1"/>
+        <box size="3.000 3.000 0.100"/>
       </geometry>
       <material name="ground_mat">
-        <color rgba="0.3 0.3 0.3 0.25"/>
+        <color rgba="0.300 0.300 0.000 0.250"/>
       </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <box size="3 3 0.1"/>
+        <box size="3.000 3.000 0.100"/>
       </geometry>
     </collision>
   </link>

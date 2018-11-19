@@ -714,6 +714,7 @@ class GameState(object):
 
 def game_factory() -> GameState:
 
+    # --------------------------------------------------------------------------
     _temp = p.connect(p.GUI)
     p.setPhysicsEngineParameter(deterministicOverlappingPairs=1)
 
@@ -721,9 +722,6 @@ def game_factory() -> GameState:
     # Failed experiment at moving the pybullet window out of the way.
     # Importing pyautogui makes the windows render without scaling,
     # tiny on my 4K screen.
-
-    # Move the pybullet window to the right.
-    # You'll probably have to redo these magic numbers on your screen.
 
     # gui.moveTo(1500, 50)
     # gui.dragRel(500)
@@ -742,31 +740,38 @@ def game_factory() -> GameState:
     #
 
     # --------------------------------------------------------------------------
-    # A cart is thick. The bottom surface is 0.025 m below its center.
-    # Starting it at a height of 0.050(ground) + 0.025(half-thickness) +
-    # a tiny jitter to prevent explosion is correct. The mid-plane of
-    # the cart does NOT appear to be at 0.000, but at -0.0125, the
-    # origin of that last link in the URDF file. Empirically, then, we
-    # add 0.0125 to the initial height of the cart to get it to appear
-    # without falling and without jumping up out of the floor (by bullet's
-    # penalty method of collision correction). We say "empirically" because
-    # we have not found justification for this hack in the documentation.
+    # A cart is 0.500 m thick. The bottom surface is 0.0250 m below its
+    # mid-plane Starting its center at a height of
+    # 0.050(ground) + 0.025(half-thickness) + a tiny jitter to prevent explosion
+    # is correct.
 
     jitter = 0.00001
-    initial_cart1_bullet_state = -0.5, 0, 0.075 + 0.0125 + jitter, 0, 0, 0, 1
+    ground_thickness = 0.100
+    cart_thickness = 0.050
+    empirical_fudge = 0.0125
+    cart_mid_plane_height = ground_thickness/2 + cart_thickness/2 \
+                            + empirical_fudge
+
+    initial_cart1_bullet_state = -0.5, 0, cart_mid_plane_height, 0, 0, 0, 1
+
     cart1 = p.loadURDF("models/double_cart_1.urdf", *initial_cart1_bullet_state)
 
-    # --------------------------------------------------------------------------
-    # A pole is 0.500 m long. It should start at height 0.250(half-pole) +
-    # 0.050(cart height) + 0.050(half-ground) + jitter
+    pole_length = 0.500
+    pole_height = cart_mid_plane_height + cart_thickness/2 \
+                  + empirical_fudge/4 + pole_length/2
 
-    initial_pole1_bullet_state = -0.5, 0, 0.250 + 0.100 + jitter, 0, 0, 0, 1
+    initial_pole1_bullet_state = -0.5, 0, pole_height, 0, 0, 0, 1
+    # initial_pole1_bullet_state = -0.5, 0, 0.250 + 0.100 + jitter, 0, 0, 0, 1
+
     pole1 = p.loadURDF("models/pole1.urdf",  *initial_pole1_bullet_state)
 
-    initial_cart2_bullet_state =  0.5, 0, 0.075 + 0.0125 + jitter, 0, 0, 0, 1
+    initial_cart2_bullet_state =  0.5, 0, cart_mid_plane_height, 0, 0, 0, 1
+
     cart2 = p.loadURDF("models/double_cart_2.urdf", *initial_cart2_bullet_state)
 
-    initial_pole2_bullet_state =  0.5, 0, 0.250 + 0.100 + jitter, 0, 0, 0, 1
+    initial_pole2_bullet_state =  0.5, 0, pole_height, 0, 0, 0, 1
+    # initial_pole2_bullet_state =  0.5, 0, 0.250 + 0.100 + jitter, 0, 0, 0, 1
+
     pole2 = p.loadURDF("models/pole2.urdf", *initial_pole2_bullet_state)
 
     # [bbeckman] Camera params found by bisective trial-and-error.
@@ -928,4 +933,3 @@ while True:
         game.record_output(c)
 
 pygame.quit()
-
