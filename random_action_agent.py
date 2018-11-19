@@ -229,7 +229,9 @@ command_screen_constants_ntup = ntup(
 
 
 class GameState(object):
-
+    """There is only one such object. It's probably a good idea to eventually
+    unpack this into global variables to get rid of one level of indirection.
+    TODO: Unpack this class into global variables."""
     def __init__(
             self, pair,
             output_file_name=None,
@@ -385,11 +387,16 @@ class GameState(object):
         elif GameState.loosen_search(c):
             self.loosen()
 
-        _result = [p.reset() for p in self.pair]
+        p.restoreState(bullet_state_id)
+        # _result = [p.reset() for p in self.pair]
+        pass
 
     def process_command_ground_truth_mode(self, c):
         self.manipulate_disturbances(c)
-        _result = [p.reset() for p in self.pair]
+
+        p.restoreState(bullet_state_id)
+        # _result = [p.reset() for p in self.pair]
+        pass
 
     def tighten(self):
         self.cov *= self.search_constants.decay
@@ -708,6 +715,7 @@ class GameState(object):
 def game_factory() -> GameState:
 
     _temp = p.connect(p.GUI)
+    p.setPhysicsEngineParameter(deterministicOverlappingPairs=1)
 
     # --------------------------------------------------------------------------
     # Failed experiment at moving the pybullet window out of the way.
@@ -719,9 +727,6 @@ def game_factory() -> GameState:
 
     # gui.moveTo(1500, 50)
     # gui.dragRel(500)
-
-    # --------------------------------------------------------------------------
-    p.setGravity(0, 0, -9.81)
 
     # --------------------------------------------------------------------------
     # The ground is thick. Top surface is 0.050 meters above the zero plane.
@@ -769,6 +774,10 @@ def game_factory() -> GameState:
                                  cameraTargetPosition=(0, 0, 0),
                                  cameraPitch=-24,
                                  cameraDistance=1.25)
+
+    # --------------------------------------------------------------------------
+    p.stepSimulation()  # Following examples in bullet distribution.
+    p.setGravity(0, 0, -9.81)
 
     position_threshold = 3.0
     angle_threshold = np.pi / 4
@@ -844,6 +853,7 @@ EXACT_GAINS_Y = [0,  # x
 
 game = game_factory()
 
+bullet_state_id = p.saveState()
 
 theta = pi2 / 2
 sin_theta = np.sin(theta)
@@ -869,6 +879,7 @@ while True:
         t = step * game.sim_constants.delta_time
         action_scalar = repeatable_disturbance(None, t) \
             * game.sim_constants.action_force_multiplier
+        # TODO: Randomize sometimes.
         fx = cos_theta * action_scalar
         fy = sin_theta * action_scalar
         disturbance = np.array([fx, fy])
