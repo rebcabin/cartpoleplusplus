@@ -90,8 +90,8 @@ class BulletCartpole(object):
         p.applyExternalForce(
             self.cart, -1, (fx, fy, 0), (0, 0, 0), p.LINK_FRAME)
         self._observe_state()
-        # done, info = self._check_done()
-        done, info = False, {}
+        done, info = self._check_done()
+        # done, info = False, {}
         _reward = 0.0
         return np.copy(self.pole_state), _reward, done, info
 
@@ -242,7 +242,7 @@ class GameState(object):
             steps_per_second=240,
             delta_time=1.0 / 240.0,
 
-            action_force_multiplier=1.0,
+            action_force_multiplier=0.25,
 
             search_covariance_decay=0.975,
             search_radius=20,
@@ -771,7 +771,7 @@ def game_factory() -> GameState:
                                  cameraDistance=1.25)
 
     position_threshold = 3.0
-    angle_threshold = 0.35
+    angle_threshold = np.pi / 4
 
     pair = [
         BulletCartpole(
