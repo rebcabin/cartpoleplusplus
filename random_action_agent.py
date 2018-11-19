@@ -190,12 +190,13 @@ def repeatable_disturbance(_state, t):  # has form of a 'u' function
 def very_noisy_disturbance(amplitude=3.0):
     """ Return a state -> time -> force.
     From Mathematica:
-    verybumpy[t_] =
+    veryBumpy[t_] =
     Sum[RandomReal[{-6, 6}]
     Exp[-10(t - RandomInteger[15]) ^ 2], {20}]
     """
-    funcs = [lambda state, t: ((2 * amplitude * rnd.rand()) - amplitude)
-                              * np.exp((-10 * (t - rnd.randint(0, 16)) ** 2))
+    funcs = [lambda state, t:
+             ((2 * amplitude * rnd.rand()) - amplitude)
+             * np.exp((-10 * (t - rnd.randint(0, 16)) ** 2))
              for i in range(20)]
     return partial(sum_of_evaluated_funcs, funcs)
 
@@ -313,9 +314,8 @@ class GameState(object):
         self.ys = [np.copy(self.y0), np.copy(self.y0)]
         self.repeatable_q = True
         self.ground_truth_mode = False
-        self.delete_bullet_objects()
-        self.bullet_objects = add_all_objects()
-        p.restoreState(bullet_state_id)
+        p.disconnect()
+        start_bullet()
 
     def command_name(self, c):
         if GameState.is_g(c):
@@ -706,28 +706,7 @@ class GameState(object):
 def game_factory() -> GameState:
 
     # --------------------------------------------------------------------------
-    _temp = p.connect(p.GUI)
-    p.setPhysicsEngineParameter(deterministicOverlappingPairs=1)
-
-    # --------------------------------------------------------------------------
-    # Failed experiment at moving the pybullet window out of the way.
-    # Importing pyautogui makes the windows render without scaling,
-    # tiny on my 4K screen.
-
-    # gui.moveTo(1500, 50)
-    # gui.dragRel(500)
-
-    ground, cart1, pole1, cart2, pole2 = add_all_objects()
-
-    # [bbeckman] Camera params found by bisective trial-and-error.
-    p.resetDebugVisualizerCamera(cameraYaw=0,
-                                 cameraTargetPosition=(0, 0, 0),
-                                 cameraPitch=-24,
-                                 cameraDistance=1.25)
-
-    # --------------------------------------------------------------------------
-    p.stepSimulation()  # One step, following examples in bullet distribution.
-    p.setGravity(0, 0, -9.81)
+    cart1, cart2, ground, pole1, pole2 = start_bullet()
 
     position_threshold = 3.0
     angle_threshold = np.pi / 4
@@ -760,6 +739,27 @@ def game_factory() -> GameState:
         output_file_name=create_place_to_record_results()
     )
     return result
+
+
+def start_bullet():
+    _temp = p.connect(p.GUI)
+    p.setPhysicsEngineParameter(deterministicOverlappingPairs=1)
+    # --------------------------------------------------------------------------
+    # Failed experiment at moving the pybullet window out of the way.
+    # Importing pyautogui makes the windows render without scaling,
+    # tiny on my 4K screen.
+    # gui.moveTo(1500, 50)
+    # gui.dragRel(500)
+    ground, cart1, pole1, cart2, pole2 = add_all_objects()
+    # [bbeckman] Camera params found by bisective trial-and-error.
+    p.resetDebugVisualizerCamera(cameraYaw=0,
+                                 cameraTargetPosition=(0, 0, 0),
+                                 cameraPitch=-24,
+                                 cameraDistance=1.25)
+    # --------------------------------------------------------------------------
+    p.stepSimulation()  # One step, following examples in bullet distribution.
+    p.setGravity(0, 0, -9.81)
+    return cart1, cart2, ground, pole1, pole2
 
 
 def add_all_objects():
