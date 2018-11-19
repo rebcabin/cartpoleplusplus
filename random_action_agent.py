@@ -13,6 +13,7 @@ from toolz import reduce
 from pprint import PrettyPrinter
 from collections import namedtuple as ntup
 import json
+import operator
 
 # Windowing
 
@@ -30,6 +31,15 @@ import matplotlib.pyplot as plt
 # A/B Learning
 
 from scipy.spatial import distance
+
+
+# List of tested keyboard commands:
+# 'spacebar' for "play it again, Sam."
+#
+#
+
+
+# There are two of these: left and right.
 
 
 class BulletCartpole(object):
@@ -50,8 +60,7 @@ class BulletCartpole(object):
 
     def __init__(self, bullet_cart_id, bullet_pole_id,
                  position_threshold, angle_threshold,
-                 initial_pole_state, lqr_zero_point,
-                 initial_cart_bullet_state, initial_pole_bullet_state):
+                 initial_pole_state, lqr_zero_point):
 
         self.cart = bullet_cart_id
         self.pole = bullet_pole_id
@@ -63,10 +72,8 @@ class BulletCartpole(object):
 
         self.initial_pole_state = np.copy(initial_pole_state)
         self.pole_state = np.copy(initial_pole_state)
-        self.lqr_zero_point = np.copy(lqr_zero_point)
 
-        self.initial_cart_bullet_state = initial_cart_bullet_state
-        self.initial_pole_bullet_state = initial_pole_bullet_state
+        self.lqr_zero_point = np.copy(lqr_zero_point)
 
         # Full information from pybullet, in case we want it.
 
@@ -125,30 +132,12 @@ class BulletCartpole(object):
         pass
 
     def reset(self):
-        p.resetBasePositionAndOrientation(
-            self.cart,
-            self.initial_cart_bullet_state[0:3],
-            self.initial_cart_bullet_state[3:])
-        p.resetBasePositionAndOrientation(
-            self.pole,
-            self.initial_pole_bullet_state[0:3],
-            self.initial_pole_bullet_state[3:])
-        p.resetBaseVelocity(self.cart, [0, 0, 0], [0, 0, 0])
-        p.resetBaseVelocity(self.pole, [0, 0, 0], [0, 0, 0])
-        # for _ in range(100):
-        #     p.stepSimulation()
-        self._observe_state()
-        return np.copy(self.pole_state)
+        raise NotImplementedError
 
 
 pp = PrettyPrinter(indent=2)
 pi2 = np.pi / 2
 two_pi = np.pi * 2
-
-
-def make_pygame_rect(left, top, width, height):
-    """Wraps the constructor, adding named arguments."""
-    return pygame.Rect(left, top, width, height)
 
 
 def sum_of_evaluated_funcs(funcs, state, t):
@@ -233,7 +222,7 @@ class GameState(object):
     unpack this into global variables to get rid of one level of indirection.
     TODO: Unpack this class into global variables."""
     def __init__(
-            self, pair,
+            self, pair, bullet_objects,
             output_file_name=None,
             seed=8420,
 
@@ -244,7 +233,8 @@ class GameState(object):
             steps_per_second=240,
             delta_time=1.0 / 240.0,
 
-            action_force_multiplier=0.25,
+            # This is a calibration constant in addition to amplitude.
+            action_force_multiplier=2.0,
 
             search_covariance_decay=0.975,
             search_radius=20,
@@ -252,6 +242,7 @@ class GameState(object):
             command_screen_width=750,
             command_screen_height=780):
         self.pair = pair
+        self.bullet_objects = bullet_objects
         self.output_file_name = output_file_name
 
         self.cov0 = (search_radius ** 2) * np.identity(state_dimensions)
@@ -312,8 +303,8 @@ class GameState(object):
         self.pygame_inited = False
         self.tk_root = None
 
-    def __del__(self):
-        pygame.quit()
+    def delete_bullet_objects(self):
+        [ p.removeBody(b) for b in self.bullet_objects ]
 
     def reset(self: 'GameState'):
         self.amplitude = self.amplitude0
@@ -322,7 +313,9 @@ class GameState(object):
         self.ys = [np.copy(self.y0), np.copy(self.y0)]
         self.repeatable_q = True
         self.ground_truth_mode = False
-        [p.reset() for p in self.pair]
+        self.delete_bullet_objects()
+        self.bullet_objects = add_all_objects()
+        p.restoreState(bullet_state_id)
 
     def command_name(self, c):
         if GameState.is_g(c):
@@ -388,14 +381,12 @@ class GameState(object):
             self.loosen()
 
         p.restoreState(bullet_state_id)
-        # _result = [p.reset() for p in self.pair]
         pass
 
     def process_command_ground_truth_mode(self, c):
         self.manipulate_disturbances(c)
 
         p.restoreState(bullet_state_id)
-        # _result = [p.reset() for p in self.pair]
         pass
 
     def tighten(self):
@@ -726,53 +717,7 @@ def game_factory() -> GameState:
     # gui.moveTo(1500, 50)
     # gui.dragRel(500)
 
-    # --------------------------------------------------------------------------
-    # The ground is thick. Top surface is 0.050 meters above the zero plane.
-    # This thickness affects the correct starting height for a cart.
-
-    p.loadURDF("models/ground.urdf", 0, 0, 0, 0, 0, 0, 1)
-
-    # --------------------------------------------------------------------------
-    # Failed experiment with gimbals.
-    #
-    # cartpole1 = p.loadURDF("models/cart_pole_1.urdf",
-    #                        .25, 0.5, 0.08, 0, 0, 0, 1)
-    #
-
-    # --------------------------------------------------------------------------
-    # A cart is 0.500 m thick. The bottom surface is 0.0250 m below its
-    # mid-plane Starting its center at a height of
-    # 0.050(ground) + 0.025(half-thickness) + a tiny jitter to prevent explosion
-    # is correct.
-
-    jitter = 0.00001
-    ground_thickness = 0.100
-    cart_thickness = 0.050
-    empirical_fudge = 0.0125
-    cart_mid_plane_height = ground_thickness/2 + cart_thickness/2 \
-                            + empirical_fudge
-
-    initial_cart1_bullet_state = -0.5, 0, cart_mid_plane_height, 0, 0, 0, 1
-
-    cart1 = p.loadURDF("models/double_cart_1.urdf", *initial_cart1_bullet_state)
-
-    pole_length = 0.500
-    pole_height = cart_mid_plane_height + cart_thickness/2 \
-                  + empirical_fudge/4 + pole_length/2
-
-    initial_pole1_bullet_state = -0.5, 0, pole_height, 0, 0, 0, 1
-    # initial_pole1_bullet_state = -0.5, 0, 0.250 + 0.100 + jitter, 0, 0, 0, 1
-
-    pole1 = p.loadURDF("models/pole1.urdf",  *initial_pole1_bullet_state)
-
-    initial_cart2_bullet_state =  0.5, 0, cart_mid_plane_height, 0, 0, 0, 1
-
-    cart2 = p.loadURDF("models/double_cart_2.urdf", *initial_cart2_bullet_state)
-
-    initial_pole2_bullet_state =  0.5, 0, pole_height, 0, 0, 0, 1
-    # initial_pole2_bullet_state =  0.5, 0, 0.250 + 0.100 + jitter, 0, 0, 0, 1
-
-    pole2 = p.loadURDF("models/pole2.urdf", *initial_pole2_bullet_state)
+    ground, cart1, pole1, cart2, pole2 = add_all_objects()
 
     # [bbeckman] Camera params found by bisective trial-and-error.
     p.resetDebugVisualizerCamera(cameraYaw=0,
@@ -781,7 +726,7 @@ def game_factory() -> GameState:
                                  cameraDistance=1.25)
 
     # --------------------------------------------------------------------------
-    p.stepSimulation()  # Following examples in bullet distribution.
+    p.stepSimulation()  # One step, following examples in bullet distribution.
     p.setGravity(0, 0, -9.81)
 
     position_threshold = 3.0
@@ -799,27 +744,68 @@ def game_factory() -> GameState:
             # Therefore, our lqr zero point should always be in that relative
             # frame of reference.
             lqr_zero_point=
-            np.array([  0,  0, 0, 0, 0,    0,     0,     0]),
-            initial_cart_bullet_state=initial_cart1_bullet_state,
-            initial_pole_bullet_state=initial_pole1_bullet_state
-        ),
+            np.array([  0,  0, 0, 0, 0,    0,     0,     0]) ),
         BulletCartpole(
             cart2, pole2,
             position_threshold, angle_threshold,
             initial_pole_state=
             np.array([+0.5, 0, 0, 0, 0,    0,     0,     0]),
             lqr_zero_point=
-            np.array([  0,  0, 0, 0, 0,    0,     0,     0]),
-            initial_cart_bullet_state=initial_cart2_bullet_state,
-            initial_pole_bullet_state=initial_pole2_bullet_state
-        )]
+            np.array([  0,  0, 0, 0, 0,    0,     0,     0]) )]
 
     result = GameState(
         seed=0,
         pair=pair,
+        bullet_objects=(ground, cart1, pole1, cart2, pole2),
         output_file_name=create_place_to_record_results()
     )
     return result
+
+
+def add_all_objects():
+    # --------------------------------------------------------------------------
+    # The ground is thick. Top surface is 0.050 meters above the zero plane.
+    # This thickness affects the correct starting height for a cart.
+    ground = p.loadURDF("models/ground.urdf", 0, 0, 0, 0, 0, 0, 1)
+    # --------------------------------------------------------------------------
+    # Failed experiment with gimbals.
+    #
+    # cartpole1 = p.loadURDF("models/cart_pole_1.urdf",
+    #                        .25, 0.5, 0.08, 0, 0, 0, 1)
+    #
+    # --------------------------------------------------------------------------
+    # A cart is 0.500 m thick. The bottom surface is 0.0250 m below its
+    # mid-plane Starting its center at a height of 0.050(ground)
+    # + 0.025(half-thickness) is correct. It is found empirically that placing
+    # the blocks on the ground, or even a tiny bit (1/10 mm or 1/100 mm) off
+    # the ground produces non-deterministic, non-repeatable behavior. The
+    # empirical solution is to drop the blocks from a small height, then to
+    # drop the poles on the blocks, again from a small height.
+    ground_thickness = 0.100
+    cart_thickness = 0.050
+
+    # The empirical fudges prevent some non-deterministic behavior.
+    empirical_fudge = 0.0125
+
+    cart_mid_plane_height = ground_thickness / 2 + cart_thickness / 2 \
+                            + empirical_fudge
+
+    initial_cart1_bullet_state = -0.5, 0, cart_mid_plane_height, 0, 0, 0, 1
+    cart1 = p.loadURDF("models/double_cart_1.urdf", *initial_cart1_bullet_state)
+
+    pole_length = 0.500
+    pole_height = cart_mid_plane_height + cart_thickness / 2 \
+                  + empirical_fudge / 4 + pole_length / 2
+
+    initial_pole1_bullet_state = -0.5, 0, pole_height, 0, 0, 0, 1
+    pole1 = p.loadURDF("models/pole1.urdf", *initial_pole1_bullet_state)
+
+    initial_cart2_bullet_state = 0.5, 0, cart_mid_plane_height, 0, 0, 0, 1
+    cart2 = p.loadURDF("models/double_cart_2.urdf", *initial_cart2_bullet_state)
+
+    initial_pole2_bullet_state = 0.5, 0, pole_height, 0, 0, 0, 1
+    pole2 = p.loadURDF("models/pole2.urdf", *initial_pole2_bullet_state)
+    return ground, cart1, pole1, cart2, pole2
 
 
 def create_place_to_record_results():
@@ -857,7 +843,6 @@ EXACT_GAINS_Y = [0,  # x
 
 
 game = game_factory()
-
 bullet_state_id = p.saveState()
 
 theta = pi2 / 2
