@@ -18,13 +18,14 @@ import json
 
 import os
 import tkinter as tk
-# import pyautogui as gui
+# import pyautogui as gui  # Suspended experiment
 
 # Rendering
 
 import pygame
 from pygame.color import THECOLORS
 from pygame.locals import *
+import matplotlib.pyplot as plt
 
 # A/B Learning
 
@@ -89,22 +90,23 @@ class BulletCartpole(object):
         p.applyExternalForce(
             self.cart, -1, (fx, fy, 0), (0, 0, 0), p.LINK_FRAME)
         self._observe_state()
-        _done, _info = self._check_done()
+        # done, info = self._check_done()
+        done, info = False, {}
         _reward = 0.0
-        return np.copy(self.pole_state), _reward, _done, _info
+        return np.copy(self.pole_state), _reward, done, info
 
     def _check_done(self):
-        _done = False
-        _info = {}
+        done = False
+        info = {}
         if abs(self.pole_state[self.X]) > self.position_threshold \
                 or abs(self.pole_state[self.Y]) > self.position_threshold:
-            _done = True
-            _info['done_reason'] = 'cart position bounds exceeded'
+            done = True
+            info['done_reason'] = 'cart position bounds exceeded'
         elif np.abs(self.pole_state[self.ROLL]) > self.angle_threshold \
                 or abs(self.pole_state[self.PITCH]) > self.angle_threshold:
-            _done = True
-            _info['done_reason'] = 'pole angle bounds exceeded'
-        return _done, _info
+            done = True
+            info['done_reason'] = 'pole angle bounds exceeded'
+        return done, info
 
     def _observe_state(self):
         self.pso = p.getBasePositionAndOrientation(self.pole)
@@ -238,12 +240,9 @@ class GameState(object):
 
             duration_second=30,
             steps_per_second=240,
-            delta_time=1.0 / 240.0,  # TODO: pybullet default time ?
+            delta_time=1.0 / 240.0,
 
-            # Pybullet default time is apparently 1 / 240 (according to the
-            # quick-start guide). Big TODO to fix this.
-
-            action_force_multiplier=2.5,
+            action_force_multiplier=1.0,
 
             search_covariance_decay=0.975,
             search_radius=20,
@@ -323,19 +322,9 @@ class GameState(object):
         self.ground_truth_mode = False
         [p.reset() for p in self.pair]
 
-    def manipulate_disturbances(self, c):
-        if GameState.is_plus_or_equals(c):
-            self.amplitude *= 2.0
-        elif GameState.is_minus_or_underscore(c):
-            self.amplitude /= 2.0
-        elif GameState.is_zero(c):
-            self.amplitude = self.amplitude0
-        elif GameState.is_p(c):
-            self.repeatable_q = not self.repeatable_q
-        elif GameState.is_m(c):
-            self.repeatable_q = False
-
     def command_name(self, c):
+        if GameState.is_g(c):
+            return 'PRODUCE_PLOTS'
         if GameState.is_six(c):
             return ('EXIT_GROUND_TRUTH_MODE'
                     if self.ground_truth_mode else
@@ -366,6 +355,18 @@ class GameState(object):
             return 'QUIT'
         return 'REPLAY_WITHOUT_CHANGES'
 
+    def manipulate_disturbances(self, c):
+        if GameState.is_plus_or_equals(c):
+            self.amplitude *= 2.0
+        elif GameState.is_minus_or_underscore(c):
+            self.amplitude /= 2.0
+        elif GameState.is_zero(c):
+            self.amplitude = self.amplitude0
+        elif GameState.is_p(c):
+            self.repeatable_q = not self.repeatable_q
+        elif GameState.is_m(c):
+            self.repeatable_q = False
+
     def process_command_search_mode(self, c):
         if GameState.is_a_or_l(c):
             self.yp = np.copy(self.ys[0])
@@ -375,12 +376,15 @@ class GameState(object):
             self.yp = np.copy(self.ys[rnd.randint(2)])
         else:
             self.manipulate_disturbances(c)
+
         if GameState.do_new_search(c):
             self.new_search()
+
         if GameState.tighten_search(c):
             self.tighten()
         elif GameState.loosen_search(c):
             self.loosen()
+
         _result = [p.reset() for p in self.pair]
 
     def process_command_ground_truth_mode(self, c):
@@ -440,7 +444,7 @@ class GameState(object):
         st0 = '[' + ', '.join(ss0) + ']'
         return st0
 
-    def render_data(self):
+    def data_to_game_ui(self):
         sigma0 = np.round(np.sqrt(self.cov0[0][0]), 4)
         sigma = np.round(np.sqrt(self.cov[0][0]), 4)
         self.blit_line(f'σ0:              {sigma0}')
@@ -463,6 +467,68 @@ class GameState(object):
         self.blit_line(f'pole 0 state     {self.format_vector(self.pair[0].pole_state)}')
         self.blit_line(f'pole 1 state     {self.format_vector(self.pair[1].pole_state)}')
 
+    def do_plots(self):
+        fig1, ax1 = plt.subplots()
+        ax1.plot(disturbances[0, :])
+        ax1.set(xlabel='step number',
+               ylabel='disturbance force [newton]',
+               title='disturbance force at each step')
+
+        fig2, ax2 = plt.subplots(2, 2)
+        ax2[0, 0].plot(states[LEFT, 0, :])
+        ax2[0, 0].plot(states[RIGHT, 0, :])
+        ax2[0, 0].set(xlabel='step number',
+                      ylabel='x positions',
+                      title='x positions, left and right')
+
+        ax2[0, 1].plot(states[LEFT, 2, :])
+        ax2[0, 1].plot(states[RIGHT, 2, :])
+        ax2[0, 1].set(xlabel='step number',
+                      ylabel='y positions',
+                      title='y positions, left and right')
+
+        ax2[1, 0].plot(states[LEFT, 4, :])
+        ax2[1, 0].plot(states[RIGHT, 4, :])
+        ax2[1, 0].set(xlabel='step number',
+                      ylabel='roll angles',
+                      title='roll angles, left and right')
+
+        ax2[1, 1].plot(states[LEFT, 6, :])
+        ax2[1, 1].plot(states[RIGHT, 6, :])
+        ax2[1, 1].set(xlabel='step number',
+                      ylabel='pitch angles',
+                      title='pitch angles, left and right')
+
+        fig3, ax3 = plt.subplots(2, 2)
+        ax3[0, 0].scatter(states[LEFT, 0, :], states[LEFT, 1, :])
+        ax3[0, 0].set(xlabel='x position', ylabel='x velocity',
+                      title='phase plot, left x')
+        ax3[0, 1].scatter(states[LEFT, 2, :], states[LEFT, 3, :])
+        ax3[0, 1].set(xlabel='y position', ylabel='y velocity',
+                      title='phase plot, left y')
+        ax3[1, 0].scatter(states[LEFT, 4, :], states[LEFT, 5, :])
+        ax3[1, 0].set(xlabel='roll angle', ylabel='roll angular velocity',
+                      title='phase plot, left roll')
+        ax3[1, 1].scatter(states[LEFT, 6, :], states[LEFT, 7, :])
+        ax3[1, 1].set(xlabel='pitch angle', ylabel='pitch angular velocity',
+                      title='phase plot, left pitch')
+
+        fig4, ax4 = plt.subplots(2, 2)
+        ax4[0, 0].scatter(states[RIGHT, 0, :], states[RIGHT, 1, :])
+        ax4[0, 0].set(xlabel='x position', ylabel='x velocity',
+                      title='phase plot, right x')
+        ax4[0, 1].scatter(states[RIGHT, 2, :], states[RIGHT, 3, :])
+        ax4[0, 1].set(xlabel='y position', ylabel='y velocity',
+                      title='phase plot, right y')
+        ax4[1, 0].scatter(states[RIGHT, 4, :], states[RIGHT, 5, :])
+        ax4[1, 0].set(xlabel='roll angle', ylabel='roll angular velocity',
+                      title='phase plot, right roll')
+        ax4[1, 1].scatter(states[RIGHT, 6, :], states[RIGHT, 7, :])
+        ax4[1, 1].set(xlabel='pitch angle', ylabel='pitch angular velocity',
+                      title='phase plot, right pitch')
+
+        plt.show()
+
     def blit_line(self, the_text):
         b_text = self.data_font.render(
             the_text, True, THECOLORS['white'], THECOLORS['black'])
@@ -472,53 +538,35 @@ class GameState(object):
         self.current_top += self.line_spacing
         self.text_surface.blit(b_text, b_rect)
 
-    def render_text(self):
+    def text_to_game_ui(self):
         min_top = 10
         min_left = 10
         self.current_left = min_left
         self.current_top = min_top
 
-        if self.ground_truth_mode:
-            self.blit_line('---- G R O U N D - T R U T H - M O D E -----------')
-            self.render_data()
-            self.blit_line(f"")
-            self.blit_line(f'---- C O M M A N D S --------------------- Press:')
-            self.blit_line(f"'0' to reset disturbance amplitude and replay")
-            self.blit_line(f"'p' to toggle repeatable disturbance and replay")
-            self.blit_line(f"")
-            self.blit_line(f"    ... if both look good and you can't tell which is better, try")
-            self.blit_line(f"'m' to generate new disturbances, no other changes (implies non-repeatability)")
-            self.blit_line(f"'+' or '=' to double the disturbance amplitude and replay")
-            self.blit_line(f"    ... if both look bad and you can't tell which is better, try")
-            self.blit_line(f"'-' or '_' to halve the disturbance amplitude and replay")
-            self.blit_line(f"")
-            self.blit_line(f"'x' to start over from scratch if you think it's not going to converge")
-            self.blit_line(f"'6' to leave ground-truth mode and replay")
-            self.blit_line(f"'q' to quit")
-            self.blit_line(f"or any other key to replay without choosing, tightening, or loosening")
-        else:
-            self.blit_line('---- S E A R C H - M O D E -----------------------')
-            self.render_data()
-            self.blit_line(f"")
-            self.blit_line(f'---- C O M M A N D S --------------------- Press:')
+        self.data_to_game_ui()
+        self.blit_line(f"")
+        self.blit_line(f'---- C O M M A N D S --------------------- Press:')
+        if not self.ground_truth_mode:
             self.blit_line(f"'a' or 'l' to choose left video and tighten new search")
             self.blit_line(f"'b' or 'r' to choose right video and tighten new search")
             self.blit_line(f"'c' to choose randomly and tighten new search")
             self.blit_line(f"'n' to search again without choosing, tightening, or loosening")
             self.blit_line(f"'y' to loosen new search without choosing")
-            self.blit_line(f"'0' to reset disturbance amplitude and replay")
-            self.blit_line(f"'p' to toggle repeatable disturbance and replay")
-            self.blit_line(f"")
-            self.blit_line(f"    ... if both look good and you can't tell which is better, try")
-            self.blit_line(f"'m' to generate new disturbances, no other changes (implies non-repeatability)")
-            self.blit_line(f"'+' or '=' to double the disturbance amplitude and replay")
-            self.blit_line(f"    ... if both look bad and you can't tell which is better, try")
-            self.blit_line(f"'-' or '_' to halve the disturbance amplitude and replay")
-            self.blit_line(f"")
-            self.blit_line(f"'x' to start over from scratch if you think it's not going to converge")
-            self.blit_line(f"'6' to enter ground-truth mode and replay")
-            self.blit_line(f"'q' to quit")
-            self.blit_line(f"or any other key to replay without choosing, tightening, or loosening")
+        self.blit_line(f"'0' to reset disturbance amplitude and replay")
+        self.blit_line(f"'p' to toggle repeatable disturbance and replay")
+        self.blit_line(f"")
+        self.blit_line(f"'g' to plot data")
+        self.blit_line(f"    ... if both look good and you can't tell which is better, try")
+        self.blit_line(f"'m' to generate new disturbances, no other changes (implies non-repeatability)")
+        self.blit_line(f"'+' or '=' to double the disturbance amplitude and replay")
+        self.blit_line(f"    ... if both look bad and you can't tell which is better, try")
+        self.blit_line(f"'-' or '_' to halve the disturbance amplitude and replay")
+        self.blit_line(f"")
+        self.blit_line(f"'x' to start over from scratch if you think it's not going to converge")
+        self.blit_line(f"'6' to {'leave' if self.ground_truth_mode else 'enter'} ground-truth mode and replay")
+        self.blit_line(f"'q' to quit")
+        self.blit_line(f"or any other key to replay without choosing, tightening, or loosening")
 
         self.screen.blit(self.text_surface, self.text_rect)
 
@@ -555,7 +603,7 @@ class GameState(object):
             # TODO: figure out how to position the pybullet sim window
 
         self.text_surface.fill(THECOLORS['black'])
-        self.render_text()
+        self.text_to_game_ui()
         pygame.display.flip()
 
         done = False
@@ -571,7 +619,7 @@ class GameState(object):
 
     def command_blast(self, key, fg_color='green', bg_color='blue'):
         text = \
-            self.command_name(key) + ' [ ' + chr(key) + ' ] [' + str(key) + ']'
+            self.command_name(key) + ' [ ' + chr(key) + ' ]'
         b_text = self.dpy_font.render(
             #    |True| = antialiased
             text, True, THECOLORS[fg_color], THECOLORS[bg_color])
@@ -580,6 +628,10 @@ class GameState(object):
         b_rect.centery = self.text_rect.centery
         _rect = self.screen.blit(b_text, b_rect)
         pygame.display.update()
+
+    @staticmethod
+    def is_g(c):
+        return c == 71 or c == 103
 
     @staticmethod
     def is_a_or_l(c):
@@ -855,8 +907,9 @@ while True:
     elif GameState.is_x(c):
         game.reset()
         continue
-
-    if game.ground_truth_mode:
+    elif game.is_g(c):
+        game.do_plots()
+    elif game.ground_truth_mode:
         game.process_command_ground_truth_mode(c)
     else:
         game.trial_count += 1
