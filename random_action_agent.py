@@ -8,12 +8,9 @@ import numpy as np
 import numpy.random as rnd
 import datetime
 import time
-from functools import partial
-from toolz import reduce
 from pprint import PrettyPrinter
 from collections import namedtuple as ntup
 import json
-import operator
 
 # Windowing
 
@@ -31,6 +28,12 @@ import matplotlib.pyplot as plt
 # A/B Learning
 
 from scipy.spatial import distance
+
+
+# Not able to get bullet to be repeatable and deterministic. Punting and
+# resorting to extreme measure of restarting the physics server every trial.
+#
+# TODO: Get bullet to save and restore properly; see 'save_state_example.'
 
 
 # List of tested keyboard commands:
@@ -98,7 +101,7 @@ class BulletCartpole(object):
             self.cart, -1, (fx, fy, 0), (0, 0, 0), p.LINK_FRAME)
         self._observe_state()
         done, info = self._check_done()
-        # done, info = False, {}
+        # done, info = False, {}  # Let it run out
         _reward = 0.0
         return np.copy(self.pole_state), _reward, done, info
 
@@ -132,6 +135,8 @@ class BulletCartpole(object):
         pass
 
     def reset(self):
+        """In case this gets called accidentally. We're ditching any attempt
+        to restart bullet physics."""
         raise NotImplementedError
 
 
@@ -140,16 +145,9 @@ pi2 = np.pi / 2
 two_pi = np.pi * 2
 
 
-def sum_of_evaluated_funcs(funcs, state, t):
-    """I just made a named func for this to inspect in the debugger. A lambda
-    is more elegant but less debuggable."""
-    results = [f(state, t) for f in funcs]
-    result = reduce(operator.add, results)
-    return result
-
-
 def repeatable_disturbance(_state, t):  # has form of a 'u' function
-    """For comparison with "particularBumpy" in Mathematica."""
+    """For comparison with "particularBumpy" in Mathematica. Only works when
+    total duration is 30 seconds."""
 
     #      5.55208 E ^ (-10(-15 + t) ^ 2)
     r15 =  5.55208 * np.exp(-10. * ((t - 15.) ** 2))
@@ -187,18 +185,11 @@ def repeatable_disturbance(_state, t):  # has form of a 'u' function
     return r15 + r13 + r12 + r10 + r08 + r07 + r06 + r04 + r03 + r02 + r00
 
 
-def very_noisy_disturbance(amplitude=3.0):
-    """ Return a state -> time -> force.
-    From Mathematica:
-    veryBumpy[t_] =
-    Sum[RandomReal[{-6, 6}]
-    Exp[-10(t - RandomInteger[15]) ^ 2], {20}]
-    """
-    funcs = [lambda state, t:
-             ((2 * amplitude * rnd.rand()) - amplitude)
-             * np.exp((-10 * (t - rnd.randint(0, 16)) ** 2))
-             for i in range(20)]
-    return partial(sum_of_evaluated_funcs, funcs)
+def random_disturbance_funcs(amplitude):
+    return [lambda _state, t:  (
+            (2 * amplitude * rnd.rand()) - amplitude)
+            * np.exp((-10 * (t - rnd.randint(0, 16)) ** 2))
+            for _ in range(20)]
 
 
 sim_constants_ntup = ntup(
@@ -219,11 +210,12 @@ command_screen_constants_ntup = ntup(
 
 
 class GameState(object):
-    """There is only one such object. It's probably a good idea to eventually
-    unpack this into global variables to get rid of one level of indirection.
-    TODO: Unpack this class into global variables."""
+    """There is only one such object. Either pack up all the globals and put
+    them in here or unpack this into globals to get rid of one level of
+    indirection.
+    TODO: Reconcile this singleton class with global variables."""
     def __init__(
-            self, pair, bullet_objects,
+            self, pair,
             output_file_name=None,
             seed=8420,
 
@@ -243,7 +235,6 @@ class GameState(object):
             command_screen_width=750,
             command_screen_height=780):
         self.pair = pair
-        self.bullet_objects = bullet_objects
         self.output_file_name = output_file_name
 
         self.cov0 = (search_radius ** 2) * np.identity(state_dimensions)
@@ -304,9 +295,6 @@ class GameState(object):
         self.pygame_inited = False
         self.tk_root = None
 
-    def delete_bullet_objects(self):
-        [ p.removeBody(b) for b in self.bullet_objects ]
-
     def reset(self: 'GameState'):
         self.amplitude = self.amplitude0
         self.cov = np.copy(self.cov0)
@@ -314,8 +302,7 @@ class GameState(object):
         self.ys = [np.copy(self.y0), np.copy(self.y0)]
         self.repeatable_q = True
         self.ground_truth_mode = False
-        p.disconnect()
-        start_bullet()
+        restart_bullet()
 
     def command_name(self, c):
         if GameState.is_g(c):
@@ -379,15 +366,11 @@ class GameState(object):
             self.tighten()
         elif GameState.loosen_search(c):
             self.loosen()
-
-        p.restoreState(bullet_state_id)
-        pass
+        restart_bullet()
 
     def process_command_ground_truth_mode(self, c):
         self.manipulate_disturbances(c)
-
-        p.restoreState(bullet_state_id)
-        pass
+        restart_bullet()
 
     def tighten(self):
         self.cov *= self.search_constants.decay
@@ -571,7 +554,8 @@ class GameState(object):
     def keyboard_command_window(self):
         if not self.pygame_inited:
 
-            # Tk voodoo for positioning the keyboard-command window
+            # Tk voodoo for positioning the keyboard-command window; do this
+            # just prior to calling pygame.init()
 
             self.tk_root = tk.Tk()
             embed = tk.Frame(
@@ -704,9 +688,7 @@ class GameState(object):
 
 
 def game_factory() -> GameState:
-
-    # --------------------------------------------------------------------------
-    cart1, cart2, ground, pole1, pole2 = start_bullet()
+    ground, cart1, pole1, cart2, pole2= start_bullet()
 
     position_threshold = 3.0
     angle_threshold = np.pi / 4
@@ -735,10 +717,14 @@ def game_factory() -> GameState:
     result = GameState(
         seed=0,
         pair=pair,
-        bullet_objects=(ground, cart1, pole1, cart2, pole2),
         output_file_name=create_place_to_record_results()
     )
     return result
+
+
+def restart_bullet():
+    p.disconnect()
+    start_bullet()
 
 
 def start_bullet():
@@ -759,7 +745,7 @@ def start_bullet():
     # --------------------------------------------------------------------------
     p.stepSimulation()  # One step, following examples in bullet distribution.
     p.setGravity(0, 0, -9.81)
-    return cart1, cart2, ground, pole1, pole2
+    return ground, cart1, pole1, cart2, pole2
 
 
 def add_all_objects():
@@ -790,21 +776,21 @@ def add_all_objects():
     cart_mid_plane_height = ground_thickness / 2 + cart_thickness / 2 \
                             + empirical_fudge
 
-    initial_cart1_bullet_state = -0.5, 0, cart_mid_plane_height, 0, 0, 0, 1
-    cart1 = p.loadURDF("models/double_cart_1.urdf", *initial_cart1_bullet_state)
+    initial_cart1_posori = -0.5, 0, cart_mid_plane_height, 0, 0, 0, 1
+    cart1 = p.loadURDF("models/double_cart_1.urdf", *initial_cart1_posori)
 
     pole_length = 0.500
-    pole_height = cart_mid_plane_height + cart_thickness / 2 \
-                  + empirical_fudge / 4 + pole_length / 2
+    pole_height = cart_mid_plane_height + (cart_thickness / 2) \
+        + (empirical_fudge / 4) + (pole_length / 2)
 
-    initial_pole1_bullet_state = -0.5, 0, pole_height, 0, 0, 0, 1
-    pole1 = p.loadURDF("models/pole1.urdf", *initial_pole1_bullet_state)
+    initial_pole1_posori = -0.5, 0, pole_height, 0, 0, 0, 1
+    pole1 = p.loadURDF("models/pole1.urdf", *initial_pole1_posori)
 
-    initial_cart2_bullet_state = 0.5, 0, cart_mid_plane_height, 0, 0, 0, 1
-    cart2 = p.loadURDF("models/double_cart_2.urdf", *initial_cart2_bullet_state)
+    initial_cart2_posori = 0.5, 0, cart_mid_plane_height, 0, 0, 0, 1
+    cart2 = p.loadURDF("models/double_cart_2.urdf", *initial_cart2_posori)
 
-    initial_pole2_bullet_state = 0.5, 0, pole_height, 0, 0, 0, 1
-    pole2 = p.loadURDF("models/pole2.urdf", *initial_pole2_bullet_state)
+    initial_pole2_posori = 0.5, 0, pole_height, 0, 0, 0, 1
+    pole2 = p.loadURDF("models/pole2.urdf", *initial_pole2_posori)
     return ground, cart1, pole1, cart2, pole2
 
 
@@ -843,13 +829,13 @@ EXACT_GAINS_Y = [0,  # x
 
 
 game = game_factory()
-bullet_state_id = p.saveState()
+
 
 theta = pi2 / 2
-sin_theta = np.sin(theta)
-cos_theta = np.cos(theta)
+
 
 speed_up_time_factor = 2  # TODO: fix this along with pybullet delta-t.
+
 
 n_steps = game.sim_constants.duration_second \
           * game.sim_constants.steps_per_second
@@ -860,33 +846,61 @@ LEFT = 0
 RIGHT = 1
 
 
-while True:
+def project_forces(action, angle):
+    return action * np.cos(angle), action * np.sin(angle)
+
+
+def cache_forces():
+    for i in range(game.sim_constants.action_dimensions):
+        disturbances[i, step] = disturbance[i]
+        controls[LEFT, i, step] = control[LEFT][i]
+        controls[RIGHT, i, step] = control[RIGHT][i]
+    angles[step] = theta
+
+
+def cache_states():
+    for j in range(game.sim_constants.state_dimensions):
+        states[LEFT, j, step] = stateL[j]
+        states[RIGHT, j, step] = stateR[j]
+
+
+def allocate_caches():
+    global disturbances, angles, controls, states
     disturbances = np.zeros((game.sim_constants.action_dimensions, n_steps))
+    angles = np.zeros(n_steps)
     controls = np.zeros((PAIR, game.sim_constants.action_dimensions, n_steps))
     states = np.zeros((PAIR, game.sim_constants.state_dimensions, n_steps))
 
+
+while True:
+    allocate_caches()
+    amp = game.sim_constants.action_force_multiplier * game.amplitude
     for step in range(n_steps):
         t = step * game.sim_constants.delta_time
-        action_scalar = repeatable_disturbance(None, t) \
-            * game.sim_constants.action_force_multiplier
-        # TODO: Randomize sometimes.
-        fx = cos_theta * action_scalar
-        fy = sin_theta * action_scalar
-        disturbance = np.array([fx, fy])
+        if game.repeatable_q:
+            action_scalar = repeatable_disturbance(None, t) * amp
+            theta = np.pi / 4
+        else:
+            fs = random_disturbance_funcs(amp)
+            action_scalar = np.sum([f(None, t) for f in fs])
+            theta = rnd.rand() * two_pi
+        fx, fy = project_forces(action_scalar, theta)
+
+        disturbance = np.array((fx, fy))
         control = [game.pair[i].lqr_control_forces(game.ys[i])
                    for i in range(PAIR)]
-        for i in range(game.sim_constants.action_dimensions):
-            disturbances[i, step] = disturbance[i]
-            controls[LEFT, i, step] = control[LEFT][i]
-            controls[RIGHT, i, step] = control[RIGHT][i]
+
+        cache_forces()
+
         stateL, _rwdL, doneL, _infoL = \
             game.pair[LEFT].step(disturbance + control[LEFT])
         stateR, _rwdR, doneR, _infoR = \
             game.pair[RIGHT].step(disturbance + control[RIGHT])
-        for j in range(game.sim_constants.state_dimensions):
-            states[LEFT, j, step] = stateL[j]
-            states[RIGHT, j, step] = stateR[j]
+
+        cache_states()
+
         time.sleep(game.sim_constants.delta_time / speed_up_time_factor)
+
         if doneL and doneR:
             break
     c = game.keyboard_command_window()
@@ -907,7 +921,6 @@ while True:
             game.ground_truth_mode = False
     elif GameState.is_x(c):
         game.reset()
-        continue
     elif game.is_g(c):
         game.do_plots()
     elif game.ground_truth_mode:
