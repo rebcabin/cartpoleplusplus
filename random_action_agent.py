@@ -182,6 +182,7 @@ def repeatable_disturbance(_state, t):  # has form of a 'u' function
     #    + 1.80146 E ^ (-10 t ^ 2)
     r00 =  1.80146 * np.exp(-10. * ((t - 0.) ** 2))
 
+    return 0
     return r15 + r13 + r12 + r10 + r08 + r07 + r06 + r04 + r03 + r02 + r00
 
 
@@ -227,7 +228,7 @@ class GameState(object):
             delta_time=1.0 / 240.0,
 
             # This is a calibration constant in addition to amplitude.
-            action_force_multiplier=2.0,
+            action_force_multiplier=1.0 / (1024 * 1024),
 
             search_covariance_decay=0.975,
             search_radius=20,
@@ -887,8 +888,8 @@ while True:
         fx, fy = project_forces(action_scalar, theta)
 
         disturbance = np.array((fx, fy))
-        control = [game.pair[i].lqr_control_forces(game.ys[i])
-                   for i in range(PAIR)]
+        control = np.array([game.pair[i].lqr_control_forces(game.ys[i])
+                            for i in range(PAIR)])
 
         cache_forces()
 
